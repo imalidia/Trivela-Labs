@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/jpeg" href="assets/img/favicon.jpg">
+<title>Trivela Labs Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/css/dashboard.css">
+
+<nav class="nav" aria-label="Main">
+  <div class="nav-in">
+    <a class="logo" href="index.html" aria-label="Trivela Labs home"><span class="kick"><span class="badge"><img src="assets/img/logo.png" alt=""></span></span><span class="wordmark">Trivela Labs</span></a>
+    <div class="nav-links"><a href="index.html">Home</a><a href="#analyses">Analyses</a><a href="#players">Players</a><a href="#teams">Teams</a></div>
+    <a class="nav-cta" id="navNew"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New analysis</a>
+  </div>
+</nav>
+
+<header class="top">
+  <div class="wrap top-grid">
+    <div>
+      <h1 class="rise" style="--i:1">Welcome <em>back.</em></h1>
+      <p class="lede rise" style="--i:2">Here is what is analyzing now and your latest result. Past matches, saved players and teams are below.</p>
+      <a class="btn-text rise" href="#analyses" style="--i:3">Past analyses <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+      <dl class="meta rise" id="meta" style="--i:4"></dl>
+    </div>
+    <div class="now">
+      <div class="cv-run rise" id="cvRun" aria-live="polite" style="--i:2"></div>
+      <a class="latest rise" id="latest" target="_blank" rel="noopener" style="--i:3"></a>
+    </div>
+  </div>
+</header>
+
+<main class="sheet">
+  <div class="wrap">
+    <section class="block panel rise" id="analyses" aria-labelledby="anTitle" style="--i:3">
+      <div class="sec-head">
+        <div><h2 id="anTitle" tabindex="-1">Past analyses <span class="count num" id="anCount"></span></h2><p>Every match you've analyzed. Open one to see tracking, events and all 20+ stats.</p></div>
+        <div class="tools">
+          <div class="seg" id="seg" role="group" aria-label="Filter analyses">
+            <button data-f="all">All<span class="n num"></span></button><button data-f="ready">Ready<span class="n num"></span></button><button data-f="running">Analyzing<span class="n num"></span></button>
+          </div>
+          <label class="search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="q" type="search" placeholder="Search teams" aria-label="Search analyses by team" autocomplete="off"></label>
+        </div>
+      </div>
+      <ul class="rows" id="rows"></ul>
+    </section>
+
+    <section class="block" id="players" aria-labelledby="pTitle">
+      <div class="sec-head"><div><h2 id="pTitle" tabindex="-1">Saved players <span class="count num" id="pCount"></span></h2><p>Players you saved from an analysis, with their numbers from that match.</p></div></div>
+      <div class="pgrid" id="pgrid"></div>
+    </section>
+
+    <div class="block duo">
+      <section class="panel" id="teams" aria-labelledby="tTitle">
+        <div class="sec-head"><div><h2 id="tTitle" tabindex="-1">Saved teams <span class="count num" id="tCount"></span></h2><p>Form and averages across every analyzed match.</p></div></div>
+        <div id="tlist"></div>
+      </section>
+      <section class="panel" aria-labelledby="fTitle">
+        <div class="sec-head"><div><h2 id="fTitle">Recent activity</h2></div></div>
+        <ul class="feed" id="feed"></ul>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer><div class="wrap"><a class="logo" href="index.html"><img src="assets/img/logo.png" alt=""><span>Trivela Labs</span></a><span>© 2026 Trivela Labs</span></div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastUndo" hidden>Undo</button></div>
+
+<script src="assets/js/dashboard.js"></script>
+</html>
