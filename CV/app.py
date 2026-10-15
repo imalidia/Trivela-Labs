@@ -211,12 +211,12 @@ LABW = np.array([0.7, 1.3, 1.3], np.float32)
 # are noisy (shadows, shirt numbers, blur), so a track is only nobody's team when most of its life is off-kit.
 # Measured on a Serie A broadcast: players are off-kit in at most 35% of their samples, the referee in 97%;
 # in a track's first 20 samples a player can briefly reach 60%, so nothing is decided before that
-KIT_OUTLIER = 0.3
+KIT_OUTLIER = 0.45      # 0.3 on a Serie A broadcast turned Roma's red (shadowed, blurred) "off-kit": keepers everywhere
 OFF_KIT_SHARE = 0.7
 OFF_KIT_MIN = 20
 # ...except a track that is off-kit almost every time from the start: a keeper half-hidden by the post or a crowd
 # often only lives a few dozen frames per piece, never reaching OFF_KIT_MIN samples
-OFF_KIT_EARLY, OFF_KIT_EARLY_SHARE = 6, 0.8
+OFF_KIT_EARLY, OFF_KIT_EARLY_SHARE = 8, 0.9
 ROLE_SHARE = 0.25       # share of a track's detections the detector must call "referee"/"goalkeeper" to make it stick
 ROLE_MIN = 10           # detections seen before that share is trusted
 KIT_DECAY = 0.85        # older kit votes fade, so a track that slid onto another player follows his shirt
@@ -329,8 +329,8 @@ class TeamModel:
             # the latest shirt samples first: a track that slid from a player onto a keeper (or a referee) behind him
             # wears another shirt from then on, while its long history still says "player"
             n_off = sum(1 for x in rec if x != "team"); n_ref = sum(1 for x in rec if x == "ref")
-            if n_off >= 0.75 * len(rec):
-                role = "official" if (n_ref >= 0.5 * len(rec) or (r["ref"] > r["gk"] and r["ref"] >= ROLE_SHARE * n)) else "goalkeeper"
+            if len(rec) == rec.maxlen and n_off >= 0.875 * len(rec):
+                role = "official" if (n_ref >= 0.5 * len(rec) or (r["ref"] > r["gk"] and r["ref"] >= 0.1 * n)) else "goalkeeper"
                 if self.settled.get(cid) in ("team_a", "team_b"): self.flipped = True
                 self.settled[cid] = role
                 return role
@@ -341,6 +341,7 @@ class TeamModel:
             if self.nref[cid] >= REF_KIT_SHARE * nv: return "official"            # wears the officials' colours
             if self.noff[cid] >= OFF_KIT_SHARE * nv:                             # wears neither kit
                 if r["gk"] > r["ref"]: return "goalkeeper"
+                if r["ref"] >= 0.1 * n: return "official"               # the detector calls him referee now and then
                 # the detector often calls a keeper "player"; once the officials' colour is known, an off-kit shirt
                 # that isn't theirs is a keeper's (before that, the old rule: the detector's vote decides)
                 return "goalkeeper" if self.ref_c is not None or r["ref"] == 0 else "official"
@@ -1294,10 +1295,10 @@ class MatchAnalytics:
         h = max(10.0, g[3])
         d0 = math.hypot(g[1] - p0[0], g[2] - p0[1])
         ds = [math.hypot(g[1] - q[1], g[2] - q[2]) for q in pts]; de = min(ds)
-        if d0 < 2.0 * h: return False, False          # struck next to the keeper: his own kick, or a scramble
+        if d0 < 2.0 * h or d0 > 12.0 * h: return False, False   # his own kick / a scramble, or from too far (a long ball)
         shot = de <= 0.55 * d0 and de <= 4.0 * h
         # on target: it reaches him, or is lost from view still closing in on him (into the net, or a save)
-        lost_closing = ds[-1] == de and de <= 2.0 * h and pts[-1][0] - it["f"] <= 0.2 * self.fps
+        lost_closing = ds[-1] == de and de <= 1.5 * h and pts[-1][0] - it["f"] <= 0.2 * self.fps
         return shot, shot and (de <= 1.3 * h or lost_closing)
 
     def _strike_shot(self, item):
@@ -1308,10 +1309,10 @@ class MatchAnalytics:
         if any(abs(sf - f0) <= STRIKE_SETTLE_S * self.fps for f0 in self.shot_frames): return   # already a shot
         end = PITCH_L if x > PITCH_L / 2 else 0.0                 # the goal nearer the strike
         ax, ay = (x, y) if end == PITCH_L else (PITCH_L - x, PITCH_W - y)   # in the frame where that goal is at x = 105
-        shot, on = self._toward_keeper(item)
-        if shot:
-            self._shot({"x": x, "y": y, "gk": -1, "f0": sf}, team, g, ax, ay, on, 0.0); return
         dist = math.hypot(end - x, PITCH_W / 2 - y)
+        shot, on = self._toward_keeper(item)
+        if shot and dist <= SHOT_RANGE_M + 8.0:                   # the pitch estimate agrees it's within range
+            self._shot({"x": x, "y": y, "gk": -1, "f0": sf}, team, g, ax, ay, on, 0.0); return
         if dist > SHOT_RANGE_M: return
         pts = item["pts"]
         if pts:
@@ -1518,7 +1519,7 @@ class ScoreReader:
         for idx, a, b in reads:
             sc = (a, b)
             if cur is None:
-                if cand is not None and cand[1] == sc: cur = sc; cand = None
+                if sc == (0, 0) or (cand is not None and cand[1] == sc): cur = sc; cand = None   # 0-0 needs no second read
                 else: cand = (idx, sc)
                 continue
             if sc == cur: cand = None; continue
@@ -1989,11 +1990,12 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                     if idx - f0 >= 0.6 * SPEED_WIN_S * fps:
                         sp = ground.metres(wpos[0] - w0[0], wpos[1] - w0[1], 0.5 * (fy + y0), 0.5 * (hh + h0)) / ((idx - f0) / fps)
                         if sp > MAX_RUN_MS:                      # an id that jumped to another player: start over
-                            hist.clear(); hist.append((idx, wpos.copy(), fy, hh)); ph["df"] = idx
+                            hist.clear(); hist.append((idx, wpos.copy(), fy, hh)); ph["df"] = idx; ph["last_sp"] = 0.0
                         else:
                             if sp >= 0.4: ph["dist"] += sp * min(idx - ph["df"], 0.5 * fps) / fps
                             ph["df"] = idx
-                            if sp > ph["top"]: ph["top"] = sp; ph["top_f"] = idx
+                            held = min(sp, ph.get("last_sp", 0.0)); ph["last_sp"] = sp
+                            if held > ph["top"]: ph["top"] = held; ph["top_f"] = idx
                             if ph["on"]:
                                 ph["pk"] = max(ph["pk"], sp)
                                 if sp < SPRINT_END_MS: ph["on"] = False; ph["pk_sum"] += ph["pk"]; ph["pk_n"] += 1
@@ -2179,6 +2181,11 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             "sprint_kmh_b": round(spk[1][0] / spk[1][1] * 3.6, 1) if spk[1][1] else 0.0,
         }
         if ma: stats.update(ma["team"])
+        # fastest strike per team from the measured strikes (the kick tracker's pitch-space speed hit its 150 cap on
+        # broadcast footage); readings over 130 km/h are glitches
+        for t_, s_ in ((0, "a"), (1, "b")):
+            v_ = [e_[4] for e_ in xev if e_[1] == "strike" and e_[3] == t_ and e_[4] <= 130]
+            stats["fastest_strike_" + s_] = max(v_) if v_ else 0.0
         events = sorted(poss.evlog + xev, key=lambda e_: e_[0])
         links = [[a_, b_, n_] for (a_, b_), n_ in poss.links.most_common(40)]
         kit_hex = {k: "#%02x%02x%02x" % (v[2], v[1], v[0]) for k, v in kit.items()}

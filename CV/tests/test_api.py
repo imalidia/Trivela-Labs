@@ -136,3 +136,12 @@ def test_hands_analyses_to_a_remote_worker(client):
         client.put(f"/api/analyses/{ID}", json=ROW); assert w.commits == 1
     finally:
         app.WORKER = None; app.JOB_STATE.update(status="idle")
+
+def test_score_reader_turns_score_changes_into_goals(client):
+    import app
+    sr = app.ScoreReader.__new__(app.ScoreReader)
+    # a misread first frame, 0-0, a one-off misread, two goals for the left side, a goal ruled out, one for the right
+    sr.reads = [(0, 5, 2), (50, 0, 0), (100, 0, 0), (150, 7, 0), (200, 1, 0), (250, 1, 0), (300, 2, 0), (350, 2, 0),
+                (400, 1, 0), (450, 1, 0), (500, 1, 1), (550, 1, 1)]
+    assert sr.goals() == [(200, 0), (500, 1)]
+    assert app._score_of("05:04 ROM 0-0 INT") == (0, 0) and app._score_of("32:07") is None
