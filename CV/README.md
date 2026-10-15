@@ -19,6 +19,7 @@ After the first build you can start and stop the `trivela` stack from the Contai
 ## Files
 - `app.py`: the engine (FastAPI): upload, analysis, video stream, saved analyses (`/api/analyses`), and `/api/coach`, which it forwards to the AI coach container.
 - `hud.html`: the engine's own control page at http://localhost:8000/.
+- `modal_app.py`: the hosted version on Modal: `app.py` behind a sleeping CPU server, with an A10 GPU started per analysis (see the main README).
 - `tests/`: `python -m pytest tests` (the API tests run when `fastapi` and `httpx` are installed).
 - The AI coach container is built from `../trivela-frontend/coach`; its model key goes in `../trivela-frontend/coach/.env` (see `docs/ai-coach.md` there). Without it, everything else still runs.
 

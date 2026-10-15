@@ -1,0 +1,35 @@
+name: Deploy engine to Modal
+
+# Every push to main that touches the engine, the site or the coach redeploys them on Modal (CV/modal_app.py).
+# Needs the repository secrets MODAL_TOKEN_ID and MODAL_TOKEN_SECRET (Modal: Settings -> API Tokens).
+on:
+  push:
+    branches: [main, claude/modal-engine]
+    paths:
+      - "CV/**"
+      - "trivela-frontend/landing/**"
+      - "trivela-frontend/coach/**"
+      - ".github/workflows/deploy-modal.yml"
+  workflow_dispatch:
+
+concurrency: deploy-modal
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # a broken engine never gets deployed
+      - run: pip install pytest numpy opencv-python-headless scipy fastapi httpx python-multipart pyyaml modal
+      - run: python -m pytest tests -q
+        working-directory: CV
+      - run: modal deploy CV/modal_app.py
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

@@ -82,3 +82,57 @@ def test_rebuilds_an_upload_sent_out_of_order(client):
     assert client.get("/api/status").json()["status"] == "uploaded"
     from app import UPLOAD_DIR
     assert (UPLOAD_DIR / "source_match.mp4").read_bytes() == data
+
+class FakeWorker:
+    """Stands in for modal_app.ModalWorker: the analysis runs elsewhere and its progress is copied in."""
+    def __init__(self): self.started, self.cancelled, self.commits, self.remote = None, 0, 0, None
+    def info(self): return {"device": "NVIDIA A10 (test)", "gpu": True}
+    def start(self, *args): self.started = args
+    def cancel(self): self.cancelled += 1
+    def commit(self): self.commits += 1
+    def sync(self, J):
+        if self.remote: J.update(self.remote)
+
+def test_hands_analyses_to_a_remote_worker(client):
+    import app
+    w = app.WORKER = FakeWorker()
+    try:
+        assert client.get("/api/info").json() == {"device": "NVIDIA A10 (test)", "gpu": True}
+        (app.UPLOAD_DIR / "source_match.mp4").write_bytes(b"video")
+        r = client.post("/api/start-analysis", data={"fileName": "source_match.mp4", "mode": "fast", "targetRes": "720p"})
+        assert r.status_code == 200 and w.started[1:] == ("fast", "720p", True, True)
+        assert w.started[0].endswith("source_match.mp4")
+        w.remote = {"status": "processing", "progress": 42.0}
+        assert client.get("/api/status").json()["progress"] == 42.0
+        assert client.post("/api/start-analysis", data={"fileName": "source_match.mp4"}).status_code == 409
+        client.post("/api/cancel"); assert w.cancelled == 1
+        client.put(f"/api/analyses/{ID}", json=ROW); assert w.commits == 1
+    finally:
+        app.WORKER = None; app.JOB_STATE.update(status="idle")
+
+class FakeWorker:
+    """Stands in for modal_app.ModalWorker: the analysis runs elsewhere and its progress is copied in."""
+    def __init__(self): self.started, self.cancelled, self.commits, self.remote = None, 0, 0, None
+    def info(self): return {"device": "NVIDIA A10 (test)", "gpu": True}
+    def start(self, *args): self.started = args
+    def cancel(self): self.cancelled += 1
+    def commit(self): self.commits += 1
+    def sync(self, J):
+        if self.remote: J.update(self.remote)
+
+def test_hands_analyses_to_a_remote_worker(client):
+    import app
+    w = app.WORKER = FakeWorker()
+    try:
+        assert client.get("/api/info").json() == {"device": "NVIDIA A10 (test)", "gpu": True}
+        (app.UPLOAD_DIR / "source_match.mp4").write_bytes(b"video")
+        r = client.post("/api/start-analysis", data={"fileName": "source_match.mp4", "mode": "fast", "targetRes": "720p"})
+        assert r.status_code == 200 and w.started[1:] == ("fast", "720p", True, True)
+        assert w.started[0].endswith("source_match.mp4")
+        w.remote = {"status": "processing", "progress": 42.0}
+        assert client.get("/api/status").json()["progress"] == 42.0
+        assert client.post("/api/start-analysis", data={"fileName": "source_match.mp4"}).status_code == 409
+        client.post("/api/cancel"); assert w.cancelled == 1
+        client.put(f"/api/analyses/{ID}", json=ROW); assert w.commits == 1
+    finally:
+        app.WORKER = None; app.JOB_STATE.update(status="idle")

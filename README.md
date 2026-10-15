@@ -26,21 +26,21 @@ cd trivela-frontend && npm test
 
 Pushing to `main` runs both test suites on GitHub Actions (`.github/workflows/tests.yml`).
 
-## Hosting: site on Vercel, engine on a rented GPU
+## Hosting: site on Vercel, engine on Modal
 
 **Site (Vercel).** Import this repo in Vercel and set **Root Directory** to `trivela-frontend/landing`
 (Framework preset: *Other*, no build command). Every push to `main` redeploys it.
 
-**Engine (rented NVIDIA GPU, e.g. Vast.ai).** Copy the `CV/` folder to the machine, then run:
+**Engine (Modal, `CV/modal_app.py`).** Every push to `main` that touches `CV/`, the site or the coach redeploys it
+(`.github/workflows/deploy-modal.yml`). It has a fixed address, set once in `trivela-frontend/landing/assets/js/config.js`.
 
-```bash
-TRIVELA_ALLOWED_ORIGINS=https://your-app.vercel.app bash CV/run_gpu.sh
-```
+- A small CPU server (the API, uploads, saved analyses, video playback, AI coach) sleeps when nobody uses it.
+- Each analysis starts an NVIDIA A10 and stops it when done: no GPU runs, and nothing is billed, between analyses.
+- Uploads, processed video and saved analyses live on the Modal volume `trivela-data`.
 
-It installs PyTorch (CUDA 12.8, works on RTX 5090/4090/3090), downloads the model, checks the GPU, starts the
-engine and prints an `https://....trycloudflare.com` address. Open the Vercel site → *Analyze a match* and paste
-that address into the model-server box. The address changes each time the script starts.
+One-time setup:
+1. Modal: create the secret `trivela-coach` with the variables from `trivela-frontend/coach/.env.example`.
+2. Modal: Settings → API Tokens → New Token. GitHub: add it as the repository secrets `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET`.
+3. If the Vercel address changes, update `SITE_ORIGINS` in `CV/modal_app.py` (only that site may start analyses).
 
-The site is https, so the engine must be reached over https too: that's what the Cloudflare tunnel is for.
-`TRIVELA_ALLOWED_ORIGINS` lets only your Vercel site start or cancel analyses on the engine.
-
+The Docker setup above still runs everything on one machine, with or without an NVIDIA GPU.

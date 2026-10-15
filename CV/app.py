@@ -40,7 +40,7 @@ async def guard_requests(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "same-origin")
     return response
 
-BASE_DIR = Path("./tactical_workspace")
+BASE_DIR = Path(os.environ.get("TRIVELA_WORKSPACE", "./tactical_workspace"))   # a Modal volume when deployed by modal_app.py
 UPLOAD_DIR = BASE_DIR / "uploads"
 PARTS_DIR = UPLOAD_DIR / "parts"
 PROCESSED_DIR = BASE_DIR / "processed"
@@ -1884,6 +1884,17 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             pass
 
 # ----------------------------------------------------------------------------
+# WHERE THE ANALYSIS RUNS: in this process by default (Docker, a GPU machine). modal_app.py sets WORKER, which runs it on
+# an on-demand Modal GPU instead: start() hands a job over, sync() copies the worker's progress into JOB_STATE,
+# commit() saves files to the volume the GPU worker shares with this server.
+# ----------------------------------------------------------------------------
+WORKER = None
+
+def job_state():
+    if WORKER: WORKER.sync(JOB_STATE)
+    return JOB_STATE
+
+# ----------------------------------------------------------------------------
 # API
 # ----------------------------------------------------------------------------
 def range_streamer(path: Path, start: int, end: int, chunk: int = 512 * 1024):
@@ -1923,7 +1934,7 @@ def get_tracking_data(file_name: str):
 
 @app.get("/api/status")
 def get_status():
-    return JSONResponse(JOB_STATE)
+    return JSONResponse(job_state())
 
 @app.get("/api/summary")
 def get_summary():
@@ -1934,11 +1945,12 @@ def get_summary():
 
 @app.get("/api/info")
 def get_info():
-    return {"device": DEVICE_NAME, "gpu": HAS_GPU}
+    return WORKER.info() if WORKER else {"device": DEVICE_NAME, "gpu": HAS_GPU}
 
 @app.post("/api/cancel")
 def cancel():
-    JOB_CANCEL.set()
+    if WORKER: WORKER.cancel()
+    else: JOB_CANCEL.set()
     return {"status": "cancelling"}
 
 UPLOAD_LOCK = threading.Lock(); UPLOAD_RECV = set()
@@ -1962,7 +1974,7 @@ def _write_chunk(dest, data, offset, idx, total):
 @app.post("/api/upload-chunk")
 async def upload_chunk(chunk: UploadFile = File(...), fileName: str = Form(...), chunkIndex: int = Form(...),
                        totalChunks: int = Form(...), offset: int = Form(-1)):
-    if JOB_STATE["status"] in BUSY:
+    if (await asyncio.to_thread(job_state))["status"] in BUSY:
         return JSONResponse({"error": "An analysis is already running."}, status_code=409)
     if not (0 <= chunkIndex < totalChunks <= MAX_UPLOAD_BYTES // (1024 * 1024)):
         return JSONResponse({"error": "Invalid chunk index."}, status_code=400)
@@ -1992,7 +2004,7 @@ def safe_local_path(name: str):
 def start_analysis(background_tasks: BackgroundTasks, fileName: str = Form(...), targetRes: str = Form("1080p"),
                    mode: str = Form("balanced"), source: str = Form("upload"), burn: str = Form("1"), reid: str = Form("1")):
     with JOB_LOCK:
-        if JOB_STATE["status"] in BUSY:
+        if job_state()["status"] in BUSY:
             return JSONResponse({"error": "An analysis is already running."}, status_code=409)
         if source == "local":
             video = safe_local_path(fileName)
@@ -2005,7 +2017,9 @@ def start_analysis(background_tasks: BackgroundTasks, fileName: str = Form(...),
         JOB_CANCEL.clear()
         JOB_STATE.update(status="scanning", phase="Starting...", filename=video.name, total_frames=0, current_frame=0,
                          fps=0.0, progress=0.0, eta=0, video_url="", meta_url="", error_msg="")
-    background_tasks.add_task(process_football_match, str(video), mode, targetRes, burn != "0", reid != "0")
+        args = (str(video), mode, targetRes, burn != "0", reid != "0")
+        if WORKER: WORKER.start(*args)
+        else: background_tasks.add_task(process_football_match, *args)
     return {"status": "started"}
 
 # ----------------------------------------------------------------------------
@@ -2062,6 +2076,7 @@ async def save_analysis(match_id: str, request: Request):
     tmp.write_text(json.dumps(row), encoding="utf-8"); tmp.replace(path)
     for old in sorted(ANALYSES_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime)[:-MAX_ANALYSES]:
         old.unlink(missing_ok=True)
+    if WORKER: await asyncio.to_thread(WORKER.commit)
     return {"status": "saved", "id": match_id}
 
 # ----------------------------------------------------------------------------

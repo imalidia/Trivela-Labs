@@ -137,7 +137,7 @@ const qEngine = new URLSearchParams(location.search).get('engine');
 if (FIXED_ENGINE) E.setBase(FIXED_ENGINE);
 // Without a deployed server, ?engine= can point at a local one for testing; never anywhere else, so a shared link can't send videos away
 else if (qEngine && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(E.normalizeBase(qEngine) || '')) E.setBase(qEngine);
-// A rented-GPU test engine behind a Cloudflare quick tunnel (run_gpu.sh prints the link). Asks first, since a shared link could point at someone else's server
+// A test engine behind a Cloudflare quick tunnel (docker compose --profile tunnel prints the link). Asks first, since a shared link could point at someone else's server
 else if (qEngine && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(E.normalizeBase(qEngine) || '')
   && confirm(`Send the videos you analyze to ${E.normalizeBase(qEngine)}?
 
