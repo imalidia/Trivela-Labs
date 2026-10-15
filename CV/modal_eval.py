@@ -60,8 +60,32 @@ def snapshot(source: str, times: list, export: bool = False) -> dict:
     return out
 
 
+@app.function(cpu=2.0, timeout=10 * 60)
+def hf_search(queries: list) -> dict:
+    """Candidate pitch-keypoint models on Hugging Face: id, downloads, likes, licence, weight files"""
+    from huggingface_hub import HfApi
+    api, out = HfApi(), {}
+    for q in queries:
+        rows = []
+        for m in api.list_models(search=q, sort="downloads", limit=25):
+            try:
+                info = api.model_info(m.id, files_metadata=True)
+                files = [(f.rfilename, f.size) for f in info.siblings if f.rfilename.endswith((".pt", ".onnx", ".pth", ".safetensors", ".md", ".yaml"))]
+                lic = next((t for t in (info.tags or []) if t.startswith("license:")), None)
+            except Exception as e:
+                files, lic = [str(e)[:100]], None
+            rows.append({"id": m.id, "downloads": getattr(m, "downloads", None), "likes": getattr(m, "likes", None),
+                         "license": lic, "files": files[:12]})
+        out[q] = rows
+    return out
+
+
 @app.local_entrypoint()
-def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False):
+def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = ""):
+    if hf:
+        dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
+        (dest / "hf_search.json").write_text(json.dumps(hf_search.remote(hf.split("|")), indent=1))
+        return
     state = rerun.remote(rerun_mode, res) if rerun_mode else None
     files = snapshot.remote("eval" if rerun_mode else "live", [float(t) for t in times.split(",") if t.strip()], export)
     dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
