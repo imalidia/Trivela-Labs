@@ -1,0 +1,52 @@
+name: Engine eval on Modal
+
+# Runs CV/modal_eval.py when a commit message on the working branch contains [eval] or [eval rerun=<mode> times=<s,s>].
+# Results go to the eval-data branch (runs/<commit>/): summary.json, tracking data, contact sheets, frames.
+on:
+  push:
+    branches: [claude/modal-engine]
+
+concurrency: eval-modal
+
+permissions:
+  contents: write
+
+jobs:
+  eval:
+    if: contains(github.event.head_commit.message, '[eval')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install modal
+      - name: modal run
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          MSG: ${{ github.event.head_commit.message }}
+          NO_COLOR: "1"
+          TERM: dumb
+          COLUMNS: "300"
+        run: |
+          tag=$(printf '%s' "$MSG" | grep -oE '\[eval[^]]*\]' | head -1)
+          mode=$(printf '%s' "$tag" | grep -oE 'rerun=[a-z]+' | cut -d= -f2 || true)
+          times=$(printf '%s' "$tag" | grep -oE 'times=[0-9.,]+' | cut -d= -f2 || true)
+          res=$(printf '%s' "$tag" | grep -oE 'res=[0-9a-z]+' | cut -d= -f2 || true)
+          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" --out eval-out > run.log 2>&1; then
+            cat run.log
+            echo "::error title=modal eval failed::$(tail -n 30 run.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
+          cat run.log
+          cp run.log eval-out/
+      - name: publish to eval-data
+        run: |
+          dest="runs/${GITHUB_SHA::7}"
+          git config user.name "eval-bot"; git config user.email "eval-bot@users.noreply.github.com"
+          git fetch origin eval-data:eval-data 2>/dev/null && git checkout eval-data || git checkout --orphan eval-data
+          git rm -rq --cached . 2>/dev/null || true
+          mkdir -p "$dest" && cp -r eval-out/. "$dest/"
+          git add "$dest" && git commit -qm "eval ${GITHUB_SHA::7}" && git push -q origin eval-data
+          echo "::notice title=eval published::eval-data/$dest"
