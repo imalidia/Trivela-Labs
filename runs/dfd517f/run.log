@@ -1,0 +1,13 @@
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-A1m8jCe3YcbgjWcBUpmL7V
+✓ Created objects.
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
+├── ✓ Uploaded PythonPackage:modal_app
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
+├── ✓ Created Function snapshot.
+└── ✓ Created Function rerun.
+wrote ['clip.mp4', 'clip.txt', 'frame_0200.00.jpg', 'frame_0210.00.jpg', 'frame_0215.00.jpg', 'frame_0290.00.jpg', 'frame_0295.00.jpg', 'sheet_01.jpg', 'sheet_02.jpg', 'summary.json', 'tactical_metadata.json.gz', 'yolo-football-player-detection.pt'] to eval-out
+Stopping app - local entrypoint completed.
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-A1m8jCe3YcbgjWcBUpmL7V
