@@ -119,6 +119,23 @@ def test_shot_on_target_with_keeper_save_and_xg():
     assert t["fastest_strike_a"] > 60
     assert res["maps"]["shots"][0][:4] == [88.0, 34.0, 0, 1]
 
+def test_shot_counts_when_the_ball_is_lost_right_after_the_strike():
+    # broadcast footage often loses a struck ball: one sighting in flight is enough to see where it was going
+    persons = [(1, 88, 34, 0), (11, 80, 30, 1)]
+    frames = [(i, persons, 1, (88, 34)) for i in range(5)] + [(5, persons, -1, (88, 34))]
+    frames += [(8, persons, -1, (95, 34.5))] + [(30 + i, persons, -1, None) for i in range(30)]
+    _, res = run_flat(frames, team_of=TEAM, keep=[1])
+    assert res["team"]["shots_a"] == 1 and res["team"]["shots_on_a"] == 1 and res["players"][1]["shots"] == 1
+
+def test_shot_after_the_carrier_was_briefly_lost():
+    # the shooter dropped out of tracking for over a second before shooting: the nearest player is credited, even with
+    # the few metres of error the estimated pitch positions carry
+    persons = [(1, 88, 29, 0), (11, 70, 30, 1)]
+    frames = [(i, persons, 1, (84, 34)) for i in range(5)] + [(5 + i, persons, -1, (84 + 4 * i / 34, 34)) for i in range(35)]
+    frames += _kick_frames((88, 34), (104, 36), -1, persons, f0=40)[5:]
+    _, res = run_flat(frames, team_of=TEAM, keep=[1])
+    assert res["team"]["shots_a"] == 1 and res["players"][1]["shots"] == 1
+
 def test_save_is_credited_to_the_keeper_who_gets_a_side():
     persons = [(1, 88, 34, 0), (99, 103, 34, 2), (11, 80, 30, 1)]     # keeper 99 stands in front of the right goal (B's)
     frames = _kick_frames((88, 34), (103.5, 34.5), 1, persons)

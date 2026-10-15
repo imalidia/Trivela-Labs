@@ -74,7 +74,7 @@ function playerFacts(players, secs) {
     const brief = s != null && s < BRIEF_SECS;
     const perMin = v => (minutes && !brief ? num(v) / minutes : null);
     return {
-      id, label: `Track ${id.slice(1)}`, team: p.team, minutes, brief,
+      id, label: `ID ${id.slice(1)}`, team: p.team, minutes, brief,
       distance_km: num(p.distance), top_speed: num(p.top_speed), sprints: num(p.sprints), passes: num(p.passes),
       accuracy: p.accuracy == null ? null : num(p.accuracy), touches: num(p.touches),
       // Per minute when we know the time on screen, so a 10-minute track is not compared with a 60-minute one

@@ -74,7 +74,7 @@ test('summary separates who had the ball from who did the running', () => {
 test('players: per-minute ranks within the team, plain tags, brief tracks not ranked', () => {
   const { players } = buildFacts(match());
   const p = id => players.find(x => x.id === id);
-  assert.equal(p('t1').label, 'Track 1');
+  assert.equal(p('t1').label, 'ID 1');
   assert.equal(p('t1').minutes, 28.3);
   assert.equal(p('t1').ranks.distance, 1);
   assert.ok(p('t1').tags.includes('top-end pace'));
@@ -179,6 +179,7 @@ test('tools: strict schemas, and each one answers from the facts', () => {
   const lost = JSON.parse(runTool(f, 'get_events', { type: 'won', team: 'away', from_minute: 5, to_minute: 10 }));
   assert.equal(lost.total, 2);
   assert.equal(JSON.parse(runTool(f, 'get_player', { player: 'Track 1' })).id, 't1');
+  assert.equal(JSON.parse(runTool(f, 'get_player', { player: 'ID 1' })).id, 't1');
   assert.match(runTool(f, 'get_player', { player: 't99' }), /not tracked/);
   assert.match(runTool(f, 'lookup_knowledge', { topic: 'possession' }), /possession/i);
   assert.match(runTool(f, 'nope', {}), /unknown tool/i);

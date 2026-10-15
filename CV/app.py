@@ -160,12 +160,28 @@ def grass_top(gm):
 # TEAM CLASSIFICATION (K-means kit clustering + per-track temporal voting)
 # ----------------------------------------------------------------------------
 LABW = np.array([0.7, 1.3, 1.3], np.float32)
+REF_MIN_DIST = 18.0     # weighted-LAB distance from both kits before a shirt can be the referee's
+REF_MIN_SAMPLES = 8     # torso samples the referee cluster needs, at least...
+REF_MIN_HUE, REF_MIN_LIGHT = 15.0, 110.0   # LAB a/b chroma, and the L gap (0-255) that tells neutral shirts apart
+REF_MAX_SPREAD = 16.0   # a referee cluster is one colour: most of its samples within this of its centre
+REF_MIN_ANGLE = 35.0    # hue difference (degrees) between a referee's shirt and a coloured kit
+REF_MIN_SHARE = 0.025   # ...and this share of all samples (one referee among ~22 players in most wide frames)
+
+def distinct_kit(r, k):
+    # LAB colours r, k: a kit in shade keeps its hue and only gets darker, so a referee's shirt must differ in hue,
+    # or (for white / grey / black shirts) be far lighter or darker
+    ca, cb = r[1:] - 128.0, k[1:] - 128.0
+    na, nb = float(np.linalg.norm(ca)), float(np.linalg.norm(cb))
+    if na >= REF_MIN_HUE and nb >= REF_MIN_HUE:
+        return float(np.degrees(np.arccos(np.clip(np.dot(ca, cb) / (na * nb), -1.0, 1.0)))) >= REF_MIN_ANGLE
+    return float(np.linalg.norm(ca - cb)) >= REF_MIN_HUE or abs(float(r[0] - k[0])) >= REF_MIN_LIGHT
 
 class TeamModel:
     def __init__(self, grass):
         self.grass = grass
         self.samples = []
         self.centroids = None
+        self.ref = None; self.ref_r = 0.0                # referee kit (a third, smaller colour cluster) and its radius
         self.votes = defaultdict(Counter)
 
     @property
@@ -194,6 +210,28 @@ class TeamModel:
             _, _, c = cv2.kmeans(Xt, 2, None, crit, 8, cv2.KMEANS_PP_CENTERS)
         c = c / LABW
         self.centroids = c[np.argsort(c[:, 0])]            # darker kit = Team A, lighter = Team B
+        self._fit_referee(X)
+
+    def _fit_referee(self, X):
+        # The referee and linesmen wear one colour that is neither kit and are in view almost all the time, so among the
+        # samples far from both kits they form the biggest tight cluster. Keepers wear other colours and are seen less.
+        C = self.centroids * LABW
+        d = np.min(np.linalg.norm(X[:, None, :] - C[None, :, :], axis=2), axis=1)
+        far = X[d > max(REF_MIN_DIST, 2.0 * float(np.percentile(d, 60)))]
+        if len(far) < REF_MIN_SAMPLES: return
+        crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 60, 0.5)
+        k = min(5, len(far) // REF_MIN_SAMPLES)
+        _, lab, cents = cv2.kmeans(far, k, None, crit, 8, cv2.KMEANS_PP_CENTERS)
+        lab = lab.ravel(); sizes = np.bincount(lab, minlength=k)
+        for best in np.argsort(-sizes):                  # the biggest tight far cluster that is a colour of its own
+            members = far[lab == best]
+            if len(members) < max(REF_MIN_SAMPLES, REF_MIN_SHARE * len(X)): return
+            spread = float(np.percentile(np.linalg.norm(members - cents[best], axis=1), 85))
+            r = cents[best] / LABW
+            if spread <= REF_MAX_SPREAD and all(distinct_kit(r, k_) for k_ in self.centroids): break
+        else:
+            return
+        self.ref = r; self.ref_r = max(REF_MIN_DIST, 1.5 * spread)
 
     def kit_bgr(self):
         out = dict(DEFAULT_BGR)
@@ -203,7 +241,11 @@ class TeamModel:
         return out
 
     def nearest(self, f):
-        return "team_a" if np.argmin(np.linalg.norm((self.centroids - f) * LABW, axis=1)) == 0 else "team_b"
+        d = np.linalg.norm((self.centroids - f) * LABW, axis=1)
+        if self.ref is not None:
+            dr = float(np.linalg.norm((self.ref - f) * LABW))
+            if dr <= self.ref_r and dr < 0.6 * float(d.min()): return "official"
+        return "team_a" if np.argmin(d) == 0 else "team_b"
 
     def quick(self, frame, box):
         if not self.ready: return None
@@ -631,7 +673,8 @@ KICK_WIN_S = 0.3        # window used to measure ball speed
 KICK_TRACK_S = 1.2      # how long a kick's flight is followed
 TACKLE_M, TACKLE_S = 3.0, 0.7
 LONG_BALL_M = 30.0
-SHOT_RANGE_M = 32.0
+SHOT_RANGE_M = 35.0
+SHOT_AIM_M = 14.0       # a shot's flight must cross the goal line within this of the goal centre (posts at 3.66)
 DRIBBLE_M, DRIBBLE_PRESS_M = 5.0, 2.0
 DEAD_BALL_S, DEAD_BALL_M = 1.0, 0.8
 SAVE_WINDOW_S, SAVE_REACH_M = 2.5, 2.5
@@ -819,6 +862,7 @@ class MatchAnalytics:
             self._heat(g, x, y, p[5], g == c)
         self.pos = pos
         if c >= 0 and c in pos:
+            if self.last_carrier is None or self.last_carrier[0] != c: self.armed = True   # a new touch: the next kick counts
             self.carry[c] = (pos[c][0], pos[c][1], f); self.last_carrier = (c, self.side_of(c), f)
         self._spell_step(f, c)
         while self.gi < len(self.gains) and self.gains[self.gi][0] <= f:
@@ -931,23 +975,28 @@ class MatchAnalytics:
         if len(self.ball) < 2: return None
         f1, x1, y1 = self.ball[-1]
         for f0, x0, y0 in self.ball:
-            if f1 - f0 <= self.win:
-                return None if f1 == f0 else math.hypot(x1 - x0, y1 - y0) / ((f1 - f0) / self.fps) * 3.6
+            if f1 - f0 <= self.win and f1 != f0:
+                return math.hypot(x1 - x0, y1 - y0) / ((f1 - f0) / self.fps) * 3.6
+        f0, x0, y0 = self.ball[-2]         # a struck ball blurs and drops out: measure across a short gap too
+        if f1 - f0 <= 3 * self.win:
+            return math.hypot(x1 - x0, y1 - y0) / ((f1 - f0) / self.fps) * 3.6
         return None
 
     def _start_kick(self, f, v):
         self.armed = False
-        f0, x0, y0 = next(((pf, px, py) for pf, px, py in self.ball if f - pf <= self.win), self.ball[-1])
+        # where the ball was when it was struck: the same point _speed measured from (also across a short gap)
+        f0, x0, y0 = next(((pf, px, py) for pf, px, py in self.ball if f - pf <= self.win and pf != f), self.ball[-2])
         ls = self.last_still
         dead = ls is not None and f - ls[3] <= 0.6 * self.fps
         sx, sy = (ls[1], ls[2]) if dead else (x0, y0)
         g, team = self._kicker(f, sx, sy, dead)
-        self.kick = {"f0": f, "x": sx, "y": sy, "g": g, "team": team, "v": v, "pts": [], "dead": dead, "gk": -1}
+        # pts starts with the point that set the kick off, so a ball lost right after the strike still has a direction
+        self.kick = {"f0": f, "x": sx, "y": sy, "g": g, "team": team, "v": v, "pts": [self.ball[-1]], "dead": dead, "gk": -1}
 
     def _kicker(self, f, x, y, dead):
         lc = self.last_carrier
-        if not dead and lc is not None and f - lc[2] <= self.fps: return lc[0], lc[1]
-        best, bg = 4.0, -1                # a dead ball is taken by whoever stands over it
+        if not dead and lc is not None and f - lc[2] <= 1.5 * self.fps: return lc[0], lc[1]
+        best, bg = 4.0 if dead else 6.0, -1     # a dead ball is taken by whoever stands over it, else the nearest player
         for g, q in self.pos.items():
             d = math.hypot(q[0] - x, q[1] - y)
             if q[2] != 3 and d < best: best, bg = d, g
@@ -975,13 +1024,12 @@ class MatchAnalytics:
         v = min(150.0, k["v"])
         if v > self.fastest[team]: self.fastest[team] = round(v, 1)
         if k["dead"]: self._restart(k)
-        early = [p for p in k["pts"] if p[0] - k["f0"] <= 0.5 * self.fps] or k["pts"][:1]
-        if not early: return
+        early = [p for p in k["pts"] if p[0] - k["f0"] <= 0.5 * self.fps]
         ox, oy = att(k["x"], k["y"], team); tx, ty = att(early[-1][1], early[-1][2], team)
         dx, dy = tx - ox, ty - oy
-        if math.hypot(PITCH_L - ox, PITCH_W / 2 - oy) <= SHOT_RANGE_M and dx > 2.0:
+        if math.hypot(PITCH_L - ox, PITCH_W / 2 - oy) <= SHOT_RANGE_M and dx > 1.5:
             yg = oy + dy * (PITCH_L - ox) / dx                     # where the flight crosses the goal line
-            if abs(yg - PITCH_W / 2) <= 11.0:
+            if abs(yg - PITCH_W / 2) <= SHOT_AIM_M:
                 self._shot(k, team, g, ox, oy, GOAL_Y0 - 0.8 <= yg <= GOAL_Y1 + 0.8, v); return
         if ox <= THIRD: self.bump("clearances", team, g)
 
@@ -1195,25 +1243,42 @@ class Encoder:
 # ----------------------------------------------------------------------------
 # BURNED-IN BROADCAST GRAPHICS
 # ----------------------------------------------------------------------------
-def draw_marker(frame, b, color, carrier=False):
+def draw_marker(frame, b, color, carrier=False, label=None):
     x1, y1, x2, y2 = b; cx = (x1 + x2) // 2; w = max(1, x2 - x1)
     ax = max(8, int(w * 0.62)); ay = max(3, int(ax * 0.32))
     cv2.ellipse(frame, (cx, y2), (ax, ay), 0, -30, 210, (0, 0, 0), 4, cv2.LINE_AA)
     cv2.ellipse(frame, (cx, y2), (ax, ay), 0, -30, 210, color, 2, cv2.LINE_AA)
+    top = y1 - 4
     if carrier:
         gold = (0, 215, 255)
         cv2.ellipse(frame, (cx, y2), (int(ax * 1.3), int(ay * 1.35)), 0, 0, 360, gold, 3, cv2.LINE_AA)
         cv2.fillConvexPoly(frame, np.array([[cx - 8, y1 - 20], [cx + 8, y1 - 20], [cx, y1 - 6]], np.int32), gold, cv2.LINE_AA)
+        top = y1 - 24
+    if label is not None: draw_id(frame, cx, top, str(label), color)
 
-def draw_ball(frame, ball, trail):
+def draw_id(frame, cx, bottom, text, color):
+    # the player's ID in a small kit-coloured tag above his head (the same number as in the stats table)
+    H = frame.shape[0]
+    fs = max(0.42, H / 1900.0); th = max(1, int(round(fs * 2)))
+    (tw, tht), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fs, th)
+    px, py = max(3, int(tht * 0.45)), max(2, int(tht * 0.35))
+    x0 = int(cx - tw / 2 - px); y1 = int(bottom); y0 = y1 - tht - 2 * py
+    if y0 < 0: return
+    cv2.rectangle(frame, (x0, y0), (x0 + tw + 2 * px, y1), color, -1)
+    cv2.rectangle(frame, (x0, y0), (x0 + tw + 2 * px, y1), (0, 0, 0), 1)
+    ink = (0, 0, 0) if sum(color[i] * w for i, w in enumerate((0.114, 0.587, 0.299))) > 150 else (255, 255, 255)
+    cv2.putText(frame, text, (x0 + px, y1 - py), cv2.FONT_HERSHEY_SIMPLEX, fs, ink, th, cv2.LINE_AA)
+
+def draw_ball(frame, ball):
+    # ball = [x, y, predicted]
     c = (int(ball[0]), int(ball[1]))
     cv2.circle(frame, c, 8, (0, 0, 0), 2, cv2.LINE_AA)
-    cv2.circle(frame, c, 6, (255, 255, 255) if not ball[3] else (170, 170, 170), -1, cv2.LINE_AA)
+    cv2.circle(frame, c, 6, (255, 255, 255) if not ball[2] else (170, 170, 170), -1, cv2.LINE_AA)
     cv2.circle(frame, c, 10, (0, 215, 255), 1, cv2.LINE_AA)
 
-def draw_possession_bar(frame, poss, kit):
+def draw_possession_bar(frame, a, b, kit):
     H, W = frame.shape[:2]
-    a, b = poss.team_frames[0], poss.team_frames[1]; tot = a + b
+    tot = a + b
     if tot < 30: return
     pa = a / tot; bw = int(W * 0.26); bh = max(8, int(H * 0.011))
     x0 = (W - bw) // 2; y0 = H - int(H * 0.04)
@@ -1225,6 +1290,38 @@ def draw_possession_bar(frame, poss, kit):
     t = f"B {(1-pa)*100:.0f}%"
     tw = cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)[0][0]
     cv2.putText(frame, t, (x0 + bw - tw, y0 - 6), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), 1, cv2.LINE_AA)
+
+def render_video(src, out_path, size, fps, log_path, ids, kit, burn, on_progress=None, cancel=None):
+    """Final pass: decode the source again and burn in the graphics from the frame log, with every player's final ID.
+    ids: tracking id -> (display id or None, team code); team code 3 (officials) is never drawn.
+    Returns (encoder name, seconds blocked on the encoder) or None when cancelled."""
+    W, H = size
+    cap = cv2.VideoCapture(src); reader = FrameReader(cap, (W, H), maxq=32); enc = Encoder(out_path, W, H, fps, src)
+    by_code = {v: k for k, v in TEAM_CODE.items()}
+    try:
+        recs = _frames(log_path); nxt = next(recs, None); f = -1
+        while True:
+            frame = reader.get()
+            if frame is None: break
+            f += 1
+            if cancel is not None and cancel(): return None
+            if on_progress and f % 50 == 0: on_progress(f)
+            while nxt is not None and nxt[0] < f: nxt = next(recs, None)
+            if burn and nxt is not None and nxt[0] == f:
+                r = nxt[1]; people = []
+                for p in r["p"]:
+                    n, code = ids.get(p[0], (None, None))
+                    if code is None: code = p[5]
+                    if code == 3: continue
+                    people.append((p[0] == r["c"], (p[1], p[2], p[3], p[4]), kit[by_code[code]], n))
+                for carrier, b, col, n in sorted(people, key=lambda x: x[0]):      # the ball carrier is drawn last, on top
+                    draw_marker(frame, b, col, carrier, n)
+                if r.get("b") is not None: draw_ball(frame, r["b"])
+                draw_possession_bar(frame, *r.get("q", (0, 0)), kit)
+            enc.write(frame)
+        return enc.name, enc.blocked
+    finally:
+        reader.stop = True; enc.close(); cap.release()
 
 # ----------------------------------------------------------------------------
 # MAIN PIPELINE
@@ -1334,12 +1431,11 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         ball = BallTracker(); poss = PossessionEngine(fps); cuts = CutDetector()
 
         reader = FrameReader(cap, (W, H), maxq=32)
-        enc = Encoder(out_path, W, H, fps, src)
         dthread = DetectorThread(reader, run_batch, grass, small, mode["stride"], bsz)
         tmp_path = str(PROCESSED_DIR / "frames_tmp.jsonl")
         gz = open(tmp_path, "w")
 
-        J.update(status="processing", phase=f"Pass 2/2: pipelined tracking ({tracker_name}) • {enc.name} • batch {bsz} • detect every {mode['stride']} frame(s)")
+        J.update(status="processing", phase=f"Pass 2/2: pipelined tracking ({tracker_name}) • batch {bsz} • detect every {mode['stride']} frame(s)")
         tracks = {}; first_seen = {}; appear = Counter(); team_info = {}
         idx = -1; wide_frames = 0; ball_seen = 0; wrote_any = False; in_wide = False
         tracker_failed = False; start = time.time()
@@ -1378,7 +1474,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 if in_wide:
                     if shot_start is not None and shot_start <= idx - 1: shots.append([shot_start, idx - 1])
                     shot_start = None; reset_state(idx); in_wide = False
-                enc.write(frame); continue
+                continue
             if not in_wide or shot_start is None: shot_start = idx
             in_wide = True; wide_frames += 1
             cam.update(frame)
@@ -1395,7 +1491,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         if c >= BALL_MIN_CONF and (x2 - x1) <= 0.03 * W and (y2 - y1) <= 0.05 * H:
                             cands.append(((x1 + x2) / 2, (y1 + y2) / 2, c))
                         continue
-                    if c < mode["person_conf"]: continue
+                    if c < mode["person_conf"] or k in ref_ids: continue      # referees are never tracked
                     bx = xyxy[i].astype(int)
                     if valid_geometry(bx, W, H) and on_turf(gm, bx): keep.append(i)
                 det = bn[np.array(keep, dtype=int)]
@@ -1500,29 +1596,21 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                             xev.append([idx, "strike", -1, poss.last_team if poss.last_team is not None else -1, round(bw["v"], 1)])
                 bw["p"] = bwp; bw["f"] = idx
 
-            # ---- burned-in graphics ----
-            if burn:
-                for cid, b, lab in cur:
-                    if cid != carrier: draw_marker(frame, b, kit[lab])
-                for cid, b, lab in cur:
-                    if cid == carrier: draw_marker(frame, b, kit[lab], True)
-                if ball_pt is not None: draw_ball(frame, ball_pt, ball.trail)
-                draw_possession_bar(frame, poss, kit)
-            enc.write(frame)
-
+            # the graphics are burned in afterwards (render_video), once every player has his final ID
             rec = {"p": [[int(c), int(b[0]), int(b[1]), int(b[2]), int(b[3]), TEAM_CODE[l]] for c, b, l in cur],
                    "c": int(carrier) if carrier is not None else -1,
                    "b": [int(ball_pt[0]), int(ball_pt[1]), 1 if ball_pt[3] else 0] if ball_pt is not None else None,
-                   "k": round(float(cam.cum[0]), 1), "g": grass_top(gm), "s": seg_n[0]}   # k/g/s: for the pitch mapper only
+                   "k": round(float(cam.cum[0]), 1), "g": grass_top(gm), "s": seg_n[0],   # k/g/s: for the pitch mapper only
+                   "q": [poss.team_frames[0], poss.team_frames[1]]}                        # q: possession so far, for the video bar
             gz.write(str(idx) + "\t" + json.dumps(rec, separators=(",", ":")) + "\n")
             wrote_any = True
 
         # ---- finalize ----
         reader.stop = True; dthread.stop = True
-        J.update(status="finalizing", phase="Encoding final video & writing analytics", progress=99.9)
+        J.update(status="finalizing", phase="Writing analytics", progress=99.9)
         poss.drop(idx)
-        enc_name = enc.name; enc_blk = enc.blocked; enc.close(); enc = None
         cap.release(); cap = None
+        loop_s = max(1e-3, time.time() - start)
 
         if cancelled:
             gz.close(); gz = None
@@ -1541,50 +1629,67 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 if grp not in items or acc_[1] <= 0: continue
                 items[grp].append({"cid": c, "sig": acc_[0] / acc_[1], "w": float(acc_[1]), "t0": first_seen.get(c, 0),
                                    "t1": last_seen.get(c, 0) + 1, "short": appear[c] < MIN_TRACK_LEN})
-            pref = {"team_a": "A", "team_b": "B", "goalkeeper": "GK", "official": "REF"}
             for gi, grp in enumerate(groups):
                 if not items[grp]: continue
                 assign, cents, confs = reid_cluster(items[grp], grp)
                 secs = Counter()
                 for c, k in assign.items(): secs[k] += appear[c]
                 for rank, (k, _) in enumerate(secs.most_common()):
-                    gid = 10000000 * (gi + 1) + rank + 1
+                    gid = 10000000 * (gi + 1) + rank + 1          # internal only: renumbered 1, 2, 3... below
                     members = [c for c, k_ in assign.items() if k_ == k]
-                    id_info[gid] = {"label": f"{pref[grp]}{rank + 1}", "conf": confs[k], "tracklets": len(members), "group": grp}
+                    id_info[gid] = {"conf": confs[k], "tracklets": len(members), "group": grp}
                     for c in members: gmap[c] = gid
-        G = lambda c: gmap.get(c, c)
+        G0 = lambda c: gmap.get(c, c)
+        # Display IDs: every listed player gets a plain number 1, 2, 3... in order of first appearance, and that same number is
+        # burned in above his head, so "ID 4" in the table is the player tagged 4 in the video. Officials get no number at all.
+        a0 = Counter(); f0 = {}; l0 = {}
+        for c, n_ in appear.items(): a0[G0(c)] += n_
+        for c, f_ in first_seen.items(): g_ = G0(c); f0[g_] = min(f0.get(g_, f_), f_)
+        for c, l_ in team_info.items(): l0[G0(c)] = l_
+        for g_, inf in id_info.items(): l0[g_] = inf["group"]
+        listed = sorted((g_ for g_, n_ in a0.items() if n_ >= MIN_TRACK_LEN and l0.get(g_) != "official"),
+                        key=lambda g_: (f0.get(g_, 0), g_))
+        num = {g_: i + 1 for i, g_ in enumerate(listed)}
+        n_listed = len(listed)
+        for g_ in sorted(a0, key=lambda g_: (f0.get(g_, 0), g_)):     # short fragments and officials: numbered after them
+            num.setdefault(g_, len(num) + 1)
+        def G(c):
+            g_ = G0(c)
+            if g_ not in num: num[g_] = len(num) + 1
+            return num[g_]
+        # tracking id -> (number shown above the player or None for a short fragment, final team code; 3 = official, hidden)
+        ids = {c: (num[G0(c)] if num[G0(c)] <= n_listed else None, TEAM_CODE.get(l0.get(G0(c)), None)) for c in appear}
+        id_info = {num[g_]: {**v_, "label": f"ID {num[g_]}"} for g_, v_ in id_info.items() if num.get(g_, n_listed + 1) <= n_listed}
         for p_ in phys.values():           # a sprint still running when the clip ends counts with its peak so far
             if p_.get("on"): p_["pk_sum"] += p_["pk"]; p_["pk_n"] += 1; p_["on"] = False
-        if gmap:
-            a2 = Counter(); fs2 = {}; ti2 = {}; ph2 = {}
-            for c, n_ in appear.items(): a2[G(c)] += n_
-            for c, f_ in first_seen.items():
-                g_ = G(c); fs2[g_] = min(fs2.get(g_, f_), f_)
-            for c, l_ in team_info.items(): ti2[G(c)] = l_
-            for g_, inf in id_info.items(): ti2[g_] = inf["group"]
-            for c, p_ in phys.items():
-                q = ph2.setdefault(G(c), {"dist": 0.0, "top": 0.0, "top_f": 0, "spr": 0, "pk_sum": 0.0, "pk_n": 0})
-                q["dist"] += p_["dist"]; q["spr"] += p_["spr"]; q["pk_sum"] += p_["pk_sum"]; q["pk_n"] += p_["pk_n"]
-                if p_["top"] > q["top"]: q["top"] = p_["top"]; q["top_f"] = p_["top_f"]
-            appear, first_seen, team_info, phys = a2, fs2, ti2, ph2
-            t2 = Counter(); o2 = Counter()
-            for c, n_ in poss.touches.items(): t2[G(c)] += n_
-            for c, n_ in poss.on_ball.items(): o2[G(c)] += n_
-            poss.touches, poss.on_ball = t2, o2
-            l2 = Counter()
-            for (a_, b_), n_ in poss.links.items():
-                if G(a_) != G(b_): l2[(G(a_), G(b_))] += n_
-            poss.links = l2
-            ev2 = []
-            for e_ in poss.evlog:
-                if e_[1] == "pass" and G(e_[4]) == G(e_[2]):
-                    poss.passes[e_[3]] -= 1; continue          # same player seen as two fragments, not a real pass
-                ev2.append([e_[0], e_[1], G(e_[2]), e_[3], G(e_[4])])
-            poss.evlog = ev2
-            xev = [[e_[0], e_[1], G(e_[2]) if e_[2] >= 0 else e_[2], e_[3], e_[4]] for e_ in xev]
-            poss.events = [[e_[0], G(e_[1]) if e_[1] >= 0 else e_[1], e_[2]] for e_ in poss.events]
+        a2 = Counter(); fs2 = {}; ti2 = {}; ph2 = {}
+        for c, n_ in appear.items(): a2[G(c)] += n_
+        for c, f_ in first_seen.items():
+            g_ = G(c); fs2[g_] = min(fs2.get(g_, f_), f_)
+        for g_, l_ in l0.items(): ti2[num.setdefault(g_, len(num) + 1)] = l_
+        for c, p_ in phys.items():
+            q = ph2.setdefault(G(c), {"dist": 0.0, "top": 0.0, "top_f": 0, "spr": 0, "pk_sum": 0.0, "pk_n": 0})
+            q["dist"] += p_["dist"]; q["spr"] += p_["spr"]; q["pk_sum"] += p_["pk_sum"]; q["pk_n"] += p_["pk_n"]
+            if p_["top"] > q["top"]: q["top"] = p_["top"]; q["top_f"] = p_["top_f"]
+        appear, first_seen, team_info, phys = a2, fs2, ti2, ph2
+        t2 = Counter(); o2 = Counter()
+        for c, n_ in poss.touches.items(): t2[G(c)] += n_
+        for c, n_ in poss.on_ball.items(): o2[G(c)] += n_
+        poss.touches, poss.on_ball = t2, o2
+        l2 = Counter()
+        for (a_, b_), n_ in poss.links.items():
+            if G(a_) != G(b_): l2[(G(a_), G(b_))] += n_
+        poss.links = l2
+        ev2 = []
+        for e_ in poss.evlog:
+            if e_[1] == "pass" and G(e_[4]) == G(e_[2]):
+                poss.passes[e_[3]] -= 1; continue          # same player seen as two fragments, not a real pass
+            ev2.append([e_[0], e_[1], G(e_[2]), e_[3], G(e_[4])])
+        poss.evlog = ev2
+        xev = [[e_[0], e_[1], G(e_[2]) if e_[2] >= 0 else e_[2], e_[3], e_[4]] for e_ in xev]
+        poss.events = [[e_[0], G(e_[1]) if e_[1] >= 0 else e_[1], e_[2]] for e_ in poss.events]
         tot_p = poss.team_frames[0] + poss.team_frames[1]
-        real = sorted(c for c, n in appear.items() if n >= MIN_TRACK_LEN)
+        real = list(range(1, n_listed + 1))
         pl = {}
         for c in real:
             ph = phys.get(c, {})
@@ -1623,6 +1728,13 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             "sprint_kmh_b": round(spk[1][0] / spk[1][1] * 3.6, 1) if spk[1][1] else 0.0,
         }
         if ma: stats.update(ma["team"])
+        J.update(phase="Rendering the video with player IDs" if burn else "Writing the video")
+        rendered = render_video(src, out_path, (W, H), fps, tmp_path, ids, kit, burn,
+                                on_progress=lambda f_: J.update(current_frame=f_), cancel=JOB_CANCEL.is_set)
+        if rendered is None:
+            J.update(status="cancelled", phase="Cancelled", video_url="", meta_url="")
+            return
+        enc_name, enc_blk = rendered
         events = sorted(poss.evlog + xev, key=lambda e_: e_[0])
         links = [[a_, b_, n_] for (a_, b_), n_ in poss.links.most_common(40)]
         kit_hex = {k: "#%02x%02x%02x" % (v[2], v[1], v[0]) for k, v in kit.items()}
@@ -1639,7 +1751,6 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         "encoder": enc_name, "stride": mode["stride"], "batch": bsz, "imgsz": mode["imgsz"],
                         "prepass_s": round(tm["pre"], 1), "gpu_s": round(tm["gpu"], 1), "batches": tm["batches"],
                         "wait_s": round(tm["wait"], 1), "enc_blocked_s": round(enc_blk, 1)}
-        loop_s = max(1e-3, time.time() - start)
         rest["perf"]["bottleneck"] = ("detector / video decoding" if tm["wait"] / loop_s > 0.35 else
                                       "video encoder" if enc_blk / loop_s > 0.25 else "CPU tracking / drawing")
         print(f"[perf] total {el_:.1f}s | warm-up+prepass {tm['pre']:.1f}s | detector GPU busy {tm['gpu']:.1f}s in {tm['batches']} batches"
@@ -1656,10 +1767,15 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             for line in fin:
                 fi, _, body = line.rstrip("\n").partition("\t")
                 r_ = json.loads(body)
-                for k_ in ("k", "g", "s"): r_.pop(k_, None)      # pitch-mapper inputs, not needed by the viewers
-                if gmap:
-                    for p_ in r_["p"]: p_[0] = G(p_[0])
-                    if r_["c"] >= 0: r_["c"] = G(r_["c"])
+                for k_ in ("k", "g", "s", "q"): r_.pop(k_, None)      # pitch-mapper / video-bar inputs, not needed by the viewers
+                ps_ = []
+                for p_ in r_["p"]:
+                    code_ = ids.get(p_[0], (None, None))[1]
+                    if code_ == 3: continue                             # officials are left out of everything
+                    if code_ is not None: p_[5] = code_
+                    p_[0] = G(p_[0]); ps_.append(p_)
+                r_["p"] = ps_
+                if r_["c"] >= 0: r_["c"] = -1 if ids.get(r_["c"], (None, None))[1] == 3 else G(r_["c"])
                 body = json.dumps(r_, separators=(",", ":"))
                 gz.write(("" if first_w else ",") + json.dumps(fi) + ":" + body); first_w = False
         gz.write("}," + json.dumps(rest, cls=NumpyEncoder, separators=(",", ":"))[1:])
