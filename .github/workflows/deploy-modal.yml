@@ -36,6 +36,7 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           NO_COLOR: "1"
           TERM: dumb
+          COLUMNS: "300"
         run: |
           if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
             echo "::error title=modal deploy::The repository secrets MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are not set"; exit 1
@@ -46,4 +47,4 @@ jobs:
             exit 1
           fi
           cat deploy.log
-          grep -oE 'https://[a-z0-9-]+\.modal\.run' deploy.log | sort -u | sed 's/^/::notice title=Engine address::/'
+          grep -oE 'https://[A-Za-z0-9.-]+\.modal\.run' deploy.log | sort -u | sed 's/^/::notice title=Engine address::/' | tee -a "$GITHUB_STEP_SUMMARY"
