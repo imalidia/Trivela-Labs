@@ -2,8 +2,7 @@
 # Run the engine on a rented NVIDIA GPU (Vast.ai, RunPod, ...) without Docker and give it an https address
 # that the Vercel site can call.
 #   TRIVELA_ALLOWED_ORIGINS=https://your-app.vercel.app bash run_gpu.sh
-# The https://....trycloudflare.com address printed at the end is what you paste into the site's upload page.
-# It changes every time this script starts.
+# At the end it prints a link: open it and the site connects to this engine. The link changes every time this script starts.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -38,4 +37,17 @@ ENGINE_PID=$!
 trap 'kill "$ENGINE_PID" 2>/dev/null' EXIT
 
 # Quick tunnel: free, no account. Look for the https://....trycloudflare.com line in the output below.
-cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000
+SITE="${TRIVELA_ALLOWED_ORIGINS%%,*}"
+cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 2>&1 | while IFS= read -r line; do
+  echo "$line"
+  if [ -z "${SHOWN:-}" ] && [[ "$line" =~ (https://[a-z0-9-]+\.trycloudflare\.com) ]]; then
+    SHOWN=1
+    printf '
+=========================================================
+OPEN THIS LINK TO USE YOUR GPU:
+%s/app.html?engine=%s
+=========================================================
+
+' "$SITE" "${BASH_REMATCH[1]}"
+  fi
+done
