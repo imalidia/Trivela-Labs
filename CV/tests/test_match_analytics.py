@@ -27,12 +27,12 @@ class FlatPM:
 def box(cid, x, y, team):
     return [cid, x - 0.4, y - 1.8, x + 0.4, y, team]
 
-def run_flat(frames, events=(), gains=(), team_of=None, keep=()):
+def run_flat(frames, events=(), gains=(), team_of=None, keep=(), strikes=()):
     """frames: list of (f, persons[(cid,x,y,team)], carrier, ball(x,y) or None)"""
     pm = FlatPM()
     for f, *_ in frames: pm.frame[f] = (0, 0.0, (40.0, 0.0), 0)
     team_of = team_of or {}
-    ma = A["MatchAnalytics"](pm, FPS, ID, list(events), list(gains), team_of)
+    ma = A["MatchAnalytics"](pm, FPS, ID, list(events), list(gains), team_of, list(strikes))
     for f, ps, c, b in frames:
         ma.frame(f, {"p": [box(*p) for p in ps], "c": c, "b": None if b is None else [b[0], b[1], 0]})
     ma.finish()
@@ -136,6 +136,26 @@ def test_corner_is_credited_to_its_taker():
     persons = [(1, 104, 1.5, 0), (2, 95, 34, 0), (11, 96, 30, 1)]
     _, res = run_flat(_kick_frames((104, 1), (95, 30), 1, persons, still=40), team_of=TEAM, keep=[1])
     assert res["players"][1]["corners"] == 1
+
+def _struck_then_lost(x, y, carrier=1, team=0):
+    """the carrier hits the ball at frame 10 and the camera loses it: the kick tracker never sees the flight"""
+    persons = [(carrier, x, y, team), (11, 60, 30, 1)]
+    return [(f, persons, carrier if f <= 10 else -1, (x, y) if f <= 10 else None) for f in range(0, 80)]
+
+def test_hard_strike_in_the_attacking_third_is_a_shot():
+    _, res = run_flat(_struck_then_lost(85, 30), team_of=TEAM, keep=[1], strikes=[[10, 0]])
+    assert res["team"]["shots_a"] == 1 and res["team"]["shots_on_a"] == 0 and res["players"][1]["shots"] == 1
+    assert res["team"]["xg_a"] > 0
+
+def test_hard_strike_from_deep_is_not_a_shot():
+    _, res = run_flat(_struck_then_lost(40, 30), team_of=TEAM, keep=[1], strikes=[[10, 0]])
+    assert res["team"]["shots_a"] == 0
+
+def test_strike_the_kick_tracker_already_counted_is_one_shot():
+    persons = [(1, 88, 34, 0), (99, 103, 34, 2), (11, 80, 30, 1)]
+    frames = _kick_frames((88, 34), (103.5, 34.5), 1, persons)
+    _, res = run_flat(frames, team_of=TEAM, keep=[1], strikes=[[5, 0]])
+    assert res["team"]["shots_a"] == 1
 
 def test_shot_wide_is_off_target():
     persons = [(1, 88, 20, 0), (11, 60, 30, 1)]

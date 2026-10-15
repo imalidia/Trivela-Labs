@@ -107,6 +107,7 @@
   /* summary: the engine's /api/summary JSON. homeKit: 'a' if the home side wears the darker kit, 'b' if the lighter one */
   function toReport(summary, homeKit, base = null) {
     const s = summary.stats || {}, info = summary.team_info || {}, players = s.players || {}, events = summary.events || [];
+    const numbers = summary.player_no || {};   // the numbers drawn over the players in the engine's video
     const homeCode = homeKit === 'b' ? 1 : 0, awayCode = 1 - homeCode;
     const side = code => (code === homeCode ? 'home' : code === awayCode ? 'away' : null);
     const pair = (a, b) => (homeCode === 0 ? [a, b] : [b, a]);   // engine A/B -> [home, away]
@@ -149,7 +150,7 @@
     const row = ({ id, p, team }) => {
       const done = passed[id] || 0, tries = done + (lost[id] || 0);
       return {
-        player_key: 't' + id, team, jersey: null, pos: null,
+        player_key: 't' + id, team, jersey: numbers[id] ?? null, pos: null,
         distance: fix(num(p.dist_m) / 1000, 3), top_speed: fix(p.top_kmh, 1), sprints: num(p.sprints),
         passes: done, accuracy: tries ? Math.round(done / tries * 100) : null, touches: num(p.touches), won: won[id] || 0, intensity: null,
       };

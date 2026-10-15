@@ -204,3 +204,10 @@ test('phaseStep places engine progress on the five processing steps', () => {
   assert.equal(phaseStep({ status: 'finalizing', progress: 99.9 }), 0.97);
   assert.equal(phaseStep({ status: 'completed', progress: 100 }), 1);
 });
+
+test('player rows carry the numbers drawn in the video', () => {
+  const rows = toReport({ ...summary(), player_no: { 1: 3, 2: 1, 3: 2 } }, 'a').players;
+  const no = Object.fromEntries(rows.map(r => [r.player_key, r.jersey]));
+  assert.equal(no.t1, 3); assert.equal(no.t2, 1); assert.equal(no.t3, 2);
+  assert.equal(no.t4, null);   // no number from the engine (older summaries): the app falls back to the track id
+});

@@ -382,18 +382,48 @@ function vProcessing() {
       <div class="run-meta"><span class="num" id="pEta"></span></div></div>
     </div></div></section>
   <section class="lib"><div class="lib-wrap">
+    <div class="card rise" style="--i:1;margin-bottom:18px"><span class="label">While you wait</span>
+      <p id="pTip" style="margin:8px 0 0;transition:opacity .25s ease">${esc(TIPS[tipAt])}</p></div>
     <ol class="psteps rise" style="--i:1">${STEPS.map((t, i) => `<li class="ps wait" data-ps="${i}"><span class="ps-dot" aria-hidden="true"></span>
       <div><span class="ps-label">${t}</span><span class="ps-bar"><i></i></span></div><span class="ps-pct num"></span></li>`).join('')}</ol>
     <div class="proc-actions">${j.real ? '<button class="key soft sm" id="cancelJob">Cancel analysis</button>' : '<a class="key soft sm" href="dashboard.html">Back to dashboard</a>'}</div>
   </div></section>`;
 }
-const engineEta = j => [j.phase || 'Starting the model', j.fps ? `${j.fps} frames/s` : '', j.eta ? `about ${Math.max(1, Math.round(j.eta / 60))} min left` : ''].filter(Boolean).join(' · ');
+const engineEta = j => j.eta ? `About ${Math.max(1, Math.round(j.eta / 60))} min left` : j.p >= 1 ? 'Finishing up' : 'Warming up';
+/* Shown while a match is analysed, instead of the engine's technical status. Half useful, half nonsense */
+const TIPS = [
+  'Scan before you receive: the best midfielders check their shoulder several times before the ball arrives.',
+  'Open your body to the pitch when you receive. Half-turned means one touch fewer.',
+  'Pass to the foot away from the defender.',
+  'Defending a 1v1? Show the attacker onto his weaker foot and stay on your toes.',
+  'Most goals come from inside the box. Shooting from 35 metres is a hobby, not a plan.',
+  'Third-man runs break lines: pass, then run past the player who received it.',
+  'Width stretches a defence. Hug the touchline when your team has the ball.',
+  'After losing the ball, the next five seconds are the best time to win it back.',
+  'Keep your shape off the ball: distances between players matter more than speed.',
+  'A goalkeeper who speaks early saves more goals than one who dives late.',
+  'Fun fact: the model has watched more football today than most pundits.',
+  'Counting passes. Some of them were even on purpose.',
+  'The referee is being politely ignored. He is used to it.',
+  'Teaching a computer what offside is. It asked for VAR.',
+  'Measuring sprints. Your centre-back is not as fast as he thinks.',
+  'Asking the ball where it has been. It refuses to comment.',
+  'Calculating xG. Spoiler: that shot from the corner flag was not a good idea.',
+  'Bribing the GPU with extra fans to go faster.',
+];
+let tipAt = Math.floor(Math.random() * TIPS.length);
+setInterval(() => {
+  const el = $('#pTip'); if (!el) return;
+  tipAt = (tipAt + 1) % TIPS.length;
+  el.style.opacity = 0;
+  setTimeout(() => { el.textContent = TIPS[tipAt]; el.style.opacity = 1; }, 250);
+}, 7000);
 function updateProcessing() {
   const j = S.job, p = j ? j.p : 0;
   const set = (sel, fn) => { const el = $(sel); if (el) fn(el); };
   set('#pPct', el => { el.textContent = Math.round(p * 100); });
   set('#pBar', el => el.style.setProperty('--p', p));
-  set('#pEta', el => { el.textContent = j && j.real ? engineEta(j) : p >= 1 ? 'Finishing up' : `About ${Math.max(1, Math.ceil((1 - p) * 9))} min left · 3,120 frames/min`; });
+  set('#pEta', el => { el.textContent = j && j.real ? engineEta(j) : p >= 1 ? 'Finishing up' : `About ${Math.max(1, Math.ceil((1 - p) * 9))} min left`; });
   document.querySelectorAll('[data-ps]').forEach(li => {
     const i = +li.dataset.ps, sp = Math.max(0, Math.min(1, p * STEPS.length - i)), cls = sp >= 1 ? 'done' : sp > 0 ? 'active' : 'wait';
     li.className = `ps ${cls}`;
@@ -468,7 +498,7 @@ const sampleRow = p => ({ id: p.id, team: p.team, badge: p.jersey, name: `${p.po
 const gridsOf = x => ({ all: x.heat, on: x.heat_on, off: x.heat_off });
 /* A model-made keeper row (engine.keepers) -> a stats-view row. Older reports have none */
 const keeperRow = ({ player_key, team, distance, top_speed, accuracy, jersey, pos, intensity, heat, heat_on, heat_off, ...rest }) =>
-  ({ id: player_key, team, badge: 'GK', name: `Goalkeeper · Track ${String(player_key).slice(1)}`, heat: gridsOf({ heat, heat_on, heat_off }),
+  ({ id: player_key, team, badge: 'GK', name: jersey ? `Goalkeeper · Player ${jersey}` : `Goalkeeper · Track ${String(player_key).slice(1)}`, heat: gridsOf({ heat, heat_on, heat_off }),
     v: { distance, top: top_speed, acc: accuracy, ...rest } });
 function svModel(rep) {
   const m = match(), color = { home: teamColor('home'), away: teamColor('away') };
@@ -486,10 +516,10 @@ function svModel(rep) {
   const heatOf = t => maps && (maps.heat[t].on || maps.heat[t].all);
   return { home: m.home, away: m.away, color, defs: E.STAT_DEFS, stats: rep.stats,
     shots: maps ? maps.shots : null, heat: maps ? { home: heatOf('home'), away: heatOf('away') } : null, heatSize: maps && maps.size,
-    players: realPlayers(rep).map(p => { const { heat, heat_on, heat_off, ...x } = p.extra || {}; return { id: p.id, team: p.team, badge: p.jersey, name: `Track ${p.jersey}`,
+    players: realPlayers(rep).map(p => { const { heat, heat_on, heat_off, ...x } = p.extra || {}; return { id: p.id, team: p.team, badge: p.jersey, name: `${p.pos} ${p.jersey}`,
       heat: gridsOf({ heat, heat_on, heat_off }), v: { distance: p.distance, top: p.top, sprints: p.sprints, passes: p.passes, acc: p.acc, touches: p.touches, won: p.won, ...x } }; }),
     keepers: (e.keepers || []).map(keeperRow), playerHeatSize: maps && maps.player_size,
-    cardNote: 'Measured while this track was on screen. Tracks have no shirt number yet, so one player can appear under two ids.',
+    cardNote: 'Numbers match the ones over the players in the video. Measured while the player was on screen; after a camera cut one player can come back under a new number.',
     playerNote: 'Players are listed by tracking id because shirt numbers aren\'t read yet, so one player can appear under two ids after leaving the frame. Goalkeepers are under Goalkeeping; referees aren\'t listed.',
     facts: [['Clip analyzed', fmtT(e.duration_s || 0)], ['Wide-angle footage', `${e.wide_pct ?? 0}%`], ['Ball visible', `${ball.visible_pct ?? 0}%`],
       ['Fastest ball', `${ball.max_kmh ?? 0} km/h`], ['Player tracks', e.tracks ?? 0], ['ID swaps fixed', e.swaps_fixed ?? 0]],
@@ -545,10 +575,10 @@ function spark(vals, color) {
   const pts = vals.map((v, i) => `${(i / (vals.length - 1) * 70).toFixed(1)},${(20 - v * 17).toFixed(1)}`).join(' ');
   return `<svg class="spark" width="72" height="22" viewBox="-1 0 73 22"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
-/* player rows from the model -> the shape the players table uses. Tracks have no shirt number, so the track id stands in */
+/* player rows from the model -> the shape the players table uses. The number is the one drawn in the video (older reports: the track id) */
 const realPlayers = rep => rep.players.map(r => {
   const x = ((rep.engine || {}).players || {})[r.player_key] || null;   // the analytics pass's numbers and heat grid, when the engine sent them
-  return { id: r.player_key, team: r.team, jersey: +String(r.player_key).slice(1), pos: 'Track', track: true,
+  return { id: r.player_key, team: r.team, jersey: r.jersey ?? +String(r.player_key).slice(1), pos: r.jersey ? 'Player' : 'Track', track: true,
     distance: r.distance ?? 0, top: r.top_speed ?? 0, sprints: r.sprints ?? 0, passes: r.passes ?? 0, acc: r.accuracy, touches: r.touches ?? 0, won: r.won,
     extra: x, shots: x ? x.shots ?? 0 : null, defActs: x ? (x.tackles ?? 0) + (x.interceptions ?? 0) : null };
 });
