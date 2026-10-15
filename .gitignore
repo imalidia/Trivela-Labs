@@ -1,0 +1,32 @@
+# Dependencies & builds
+node_modules/
+dist/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local Claude settings
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Engine data (match videos, processed output)
+CV/videos/
+CV/tactical_workspace/
+*.mp4
+*.mov
+*.mkv

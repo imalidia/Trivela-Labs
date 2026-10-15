@@ -1,0 +1,149 @@
+/* AI coach (coach.js): the side panel.
+   Shared by app.html and dashboard.html, so it carries its own colours in Trivela's teal (light + dark). */
+.cp, .cp-scrim {
+  /* Always light: a quiet white surface, ink text, and teal only as a small accent */
+  --cp-bg:#FFFFFF; --cp-solid:#FFFFFF; --cp-soft:#F5F5F3; --cp-fg:#1C1C1A; --cp-fg2:#6E6E69; --cp-line:rgba(28,28,26,.09);
+  --cp-brand:#015C55; --cp-ink:#1C1C1A; --cp-on:#FFFFFF; --cp-warn:#B42318;
+  --cp-serif:'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --cp-ease:cubic-bezier(.32,.72,0,1);
+  font-family:'DM Sans', system-ui, sans-serif;
+}
+
+.cp-mark { flex:none; width:32px; height:32px; display:grid; place-items:center; border-radius:9px; color:var(--cp-brand); background:var(--cp-soft) }
+.cp-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap }
+.cp button { -webkit-tap-highlight-color:transparent }
+.cp :is(button, select):focus-visible { outline:2px solid var(--cp-brand); outline-offset:2px }
+
+/* ---------- "Ask AI coach": the match header's hero action ----------
+   A neon glass tile: dark translucent fill, a bright rim, light welling up from the bottom inside, a soft bloom outside,
+   and a flat neon whistle in its own glowing tile. Brighter than everything around it, without a gradient-sparkle cliché */
+.coach-cta { --neon:#6FF2C6; --neon-rgb:111,242,198;
+  position:relative; isolation:isolate; display:inline-flex; align-items:center; gap:12px; height:50px; padding:0 18px 0 6px; border-radius:16px;
+  border:1.5px solid rgba(var(--neon-rgb),.9); color:#F2FFFA; cursor:pointer; white-space:nowrap; user-select:none; -webkit-tap-highlight-color:transparent;
+  font:650 16px/1 'Bricolage Grotesque', 'DM Sans', sans-serif; letter-spacing:-.01em; text-shadow:0 0 14px rgba(var(--neon-rgb),.7);
+  background:radial-gradient(120% 100% at 50% 125%, rgba(var(--neon-rgb),.55), transparent 62%), linear-gradient(180deg, #0A3F37, #021A17);
+  box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 0 34px 0 rgba(var(--neon-rgb),.6), 0 14px 30px -10px rgba(0,20,17,.7),
+    inset 0 1px 0 rgba(255,255,255,.14), inset 0 -10px 20px -6px rgba(var(--neon-rgb),.55);
+  transition:transform .14s cubic-bezier(.23,1,.32,1), box-shadow .3s, border-color .3s;
+  animation:coach-breathe 3.6s ease-in-out infinite }
+.coach-cta-ic { flex:none; width:38px; height:38px; display:grid; place-items:center; border-radius:11px; color:var(--neon);
+  border:1px solid rgba(var(--neon-rgb),.85);
+  background:radial-gradient(100% 80% at 50% 115%, rgba(var(--neon-rgb),.6), transparent 65%), linear-gradient(180deg, #0B4A41, #052E29);
+  box-shadow:0 0 16px rgba(var(--neon-rgb),.75), inset 0 1px 0 rgba(255,255,255,.12) }
+.coach-cta-ic svg { filter:drop-shadow(0 0 4px rgba(var(--neon-rgb),.8)); transform-origin:40% 60%; transition:transform .3s cubic-bezier(.23,1,.32,1) }
+.coach-cta kbd { font:600 12px/1 'DM Sans', sans-serif; margin-left:2px; padding:5px 7px; border-radius:7px; border:1px solid rgba(var(--neon-rgb),.3); background:rgba(var(--neon-rgb),.08); color:rgba(233,255,247,.75); text-shadow:none }
+.coach-cta:active { transform:scale(.97) }
+.coach-cta:focus-visible { outline:2px solid var(--neon); outline-offset:3px }
+.coach-cta[aria-expanded="true"] { border-color:var(--neon); animation:none;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 0 40px -2px rgba(var(--neon-rgb),.75), 0 14px 30px -10px rgba(0,20,17,.7), inset 0 1px 0 rgba(255,255,255,.14), inset 0 -10px 22px -6px rgba(var(--neon-rgb),.5) }
+@media (hover:hover) and (pointer:fine) {
+  .coach-cta:hover { border-color:rgba(var(--neon-rgb),.9);
+    box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 0 44px -2px rgba(var(--neon-rgb),.8), 0 14px 30px -10px rgba(0,20,17,.7), inset 0 1px 0 rgba(255,255,255,.18), inset 0 -10px 22px -6px rgba(var(--neon-rgb),.55) }
+  .coach-cta:hover .coach-cta-ic svg { animation:coach-blow .5s cubic-bezier(.23,1,.32,1) }
+}
+@media (hover:none) { .coach-cta kbd { display:none } }
+@keyframes coach-breathe { 50% { box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 0 48px 4px rgba(var(--neon-rgb),.8), 0 14px 30px -10px rgba(0,20,17,.7), inset 0 1px 0 rgba(255,255,255,.14), inset 0 -10px 22px -6px rgba(var(--neon-rgb),.45) } }
+@keyframes coach-blow { 30% { transform:rotate(-14deg) scale(1.1) } 60% { transform:rotate(6deg) } }
+
+/* ---------- The side panel: enters from the right, leaves the same way ----------
+   Calm and white, like a document: a serif greeting, plain-text answers, your messages in soft grey, one composer */
+.cp-scrim { position:fixed; inset:0; z-index:61; background:rgba(20,20,18,.28); display:none }
+.cp { position:fixed; top:0; right:0; bottom:0; z-index:62; width:min(var(--cp-w, 440px), 100vw); display:grid; grid-template-rows:auto 1fr auto auto auto;
+  background:var(--cp-bg); color:var(--cp-fg); border-left:1px solid var(--cp-line); box-shadow:-24px 0 60px -40px rgba(20,20,18,.35);
+  transform:translateX(100%); opacity:.6; transition:transform .28s var(--cp-ease), opacity .28s var(--cp-ease) }
+.cp.in { transform:none; opacity:1 }
+.cp[hidden] { display:none }
+
+.cp-head { display:flex; align-items:center; gap:10px; padding:14px 14px 14px 18px; border-bottom:1px solid var(--cp-line) }
+.cp-head-main { flex:1; min-width:0; display:grid; gap:1px }
+.cp-head h2 { margin:0; font:600 15px/1.2 'DM Sans', sans-serif; letter-spacing:-.005em }
+.cp-chip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--cp-fg2); font-size:13px }
+.cp-head select { max-width:100%; height:26px; margin-left:-4px; padding:0 4px; border:0; border-radius:6px; background:transparent; color:var(--cp-fg2); font:inherit; font-size:13px; cursor:pointer }
+.cp-head select:hover { background:var(--cp-soft) }
+.cp-x { flex:none; width:34px; height:34px; display:grid; place-items:center; border:0; border-radius:9px; background:transparent; color:var(--cp-fg2); cursor:pointer; transition:background .15s, color .15s }
+.cp-x:hover { background:var(--cp-soft); color:var(--cp-fg) }
+.cp-x:active { transform:scale(.94) }
+
+.cp-log { overflow-y:auto; padding:24px 22px 12px; display:flex; flex-direction:column; gap:18px; overscroll-behavior:contain }
+.cp-welcome { display:grid; gap:6px; margin:auto 0 0 }   /* sits low, near the composer, like a fresh conversation */
+.cp-hello { margin:0; font:400 27px/1.2 var(--cp-serif); letter-spacing:-.01em; color:var(--cp-fg) }
+.cp-lede { margin:0 0 14px; font-size:15px; line-height:1.5; color:var(--cp-fg2) }
+.cp-welcome-tiles { display:grid; gap:2px; margin:0 -10px 10px }
+.cp-welcome-tiles button { display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto; column-gap:12px; align-items:center; text-align:left;
+  padding:9px 10px; border:0; border-radius:10px; background:transparent; color:var(--cp-fg); cursor:pointer; transition:background .15s, transform .1s ease-out }
+.cp-welcome-tiles button:hover { background:var(--cp-soft) }
+.cp-welcome-tiles button:active { transform:scale(.985) }
+.cp-welcome-tiles .cp-tile-ic { grid-row:1 / 3; width:32px; height:32px; display:grid; place-items:center; border-radius:8px; border:1px solid var(--cp-line); color:var(--cp-fg2) }
+.cp-welcome-tiles .cp-tile-ic svg { width:17px; height:17px }
+.cp-welcome-tiles b { font-size:14.5px; font-weight:600 }
+.cp-welcome-tiles span:last-child { font-size:13px; color:var(--cp-fg2); line-height:1.35 }
+.cp-welcome-tiles button[disabled] { opacity:.45; pointer-events:none }
+
+.cp-msg { max-width:100%; line-height:1.62; font-size:15px; overflow-wrap:anywhere; animation:cp-msg .3s var(--cp-ease) }
+@keyframes cp-msg { from { opacity:0; transform:translateY(6px) } }
+.cp-msg p { margin:0 0 10px } .cp-msg p:last-child { margin:0 }
+.cp-msg.me { align-self:flex-end; max-width:85%; padding:9px 14px; border-radius:16px; background:var(--cp-soft); color:var(--cp-fg) }
+.cp-msg.coach { align-self:stretch }
+.cp-msg.blocked { color:var(--cp-fg2); font-style:italic }
+.cp-msg.error { padding:10px 14px; border-radius:12px; border:1px solid color-mix(in srgb, var(--cp-warn) 25%, transparent); background:color-mix(in srgb, var(--cp-warn) 6%, #fff); color:var(--cp-warn); font-size:14px }
+.cp-kind { display:block; margin-bottom:8px; font:400 19px/1.25 var(--cp-serif); color:var(--cp-fg) }
+.cp-cards, .cp-timeline, .cp-tips { list-style:none; margin:4px 0 0; padding:0; display:grid; gap:0 }
+.cp-cards li { display:grid; gap:2px; padding:10px 0; border-top:1px solid var(--cp-line) }
+.cp-cards li:first-child { border-top:0; padding-top:2px }
+.cp-cards b { font-size:13px; font-weight:600; color:var(--cp-brand) }
+.cp-timeline { gap:8px }
+.cp-timeline li { display:grid; grid-template-columns:52px 1fr; gap:8px }
+.cp-timeline .num { font-weight:600; color:var(--cp-fg2); font-variant-numeric:tabular-nums }
+.cp-tips { counter-reset:tip; gap:10px }
+.cp-tips li { counter-increment:tip; display:grid; grid-template-columns:24px 1fr; gap:8px }
+.cp-tips li::before { content:counter(tip) "."; color:var(--cp-fg2); font-weight:600; font-variant-numeric:tabular-nums }
+.cp-typing { display:flex; gap:5px; padding:6px 0 }
+.cp-typing i { width:7px; height:7px; border-radius:50%; background:var(--cp-fg2); animation:cp-dot 1.2s infinite ease-in-out }
+.cp-typing i:nth-child(2) { animation-delay:.15s } .cp-typing i:nth-child(3) { animation-delay:.3s }
+@keyframes cp-dot { 0%, 80%, 100% { opacity:.2 } 40% { opacity:.9 } }
+
+.cp-chips, .cp-actions { display:flex; flex-wrap:wrap; gap:6px }
+.cp-actions { padding:8px 18px 0 }
+.cp-actions[hidden] { display:none }
+.cp-chips button, .cp-actions button { height:30px; padding:0 11px; border-radius:8px; border:1px solid var(--cp-line); background:var(--cp-solid); color:var(--cp-fg2);
+  font:inherit; font-size:13px; font-weight:500; cursor:pointer; transition:background .15s, color .15s, border-color .15s, transform .1s ease-out }
+.cp-chips button:hover, .cp-actions button:hover { background:var(--cp-soft); color:var(--cp-fg); border-color:rgba(28,28,26,.16) }
+.cp-chips button:active, .cp-actions button:active { transform:scale(.97) }
+.cp-actions button[disabled] { opacity:.45; pointer-events:none }
+
+.cp-form { display:flex; align-items:flex-end; gap:8px; margin:10px 16px 8px; padding:10px 10px 10px 16px; min-height:64px; border-radius:20px;
+  border:1px solid rgba(28,28,26,.14); background:var(--cp-solid); box-shadow:0 1px 2px rgba(20,20,18,.04), 0 8px 24px -12px rgba(20,20,18,.18); transition:border-color .15s, box-shadow .15s }
+.cp-form:focus-within { border-color:rgba(28,28,26,.28); box-shadow:0 1px 2px rgba(20,20,18,.05), 0 10px 28px -12px rgba(20,20,18,.26) }
+.cp-form input { flex:1; min-width:0; align-self:center; height:40px; padding:0; border:0; background:transparent; color:var(--cp-fg); font:inherit; font-size:15.5px }
+.cp-form input::placeholder { color:#A3A39E }
+.cp-form input:focus-visible { outline:none }
+.cp-form button { flex:none; width:36px; height:36px; display:grid; place-items:center; border:0; border-radius:10px; background:var(--cp-ink); color:var(--cp-on); cursor:pointer; transition:transform .1s ease-out, opacity .15s }
+.cp-form button svg { width:17px; height:17px }
+.cp-form button:active { transform:scale(.94) }
+.cp-form :disabled { opacity:.35 }
+.cp-foot { margin:0; padding:0 20px 14px; color:#9A9A95; font-size:11.5px; text-align:center }
+
+/* Wide screens: the page makes room for the panel instead of sitting under it. Fixed bars and toasts move with it */
+@media (min-width:900px) {
+  body.cp-open { padding-right:var(--cp-w, 440px) }
+  body.cp-open .nav { right:var(--cp-w, 440px) }
+  body.cp-open .toast { left:calc((100% - var(--cp-w, 440px)) / 2) }
+}
+@media (max-width:640px) {
+  .cp-scrim:not([hidden]) { display:block }
+  .cp { width:100vw; border-left:0 }
+}
+
+/* Comfort settings */
+@media (prefers-reduced-motion: reduce) {
+  .cp { transition:opacity .2s ease; transform:none }
+  .cp:not(.in) { opacity:0 }
+  .cp-msg, .coach-cta, .coach-cta-ic svg { animation:none !important }
+  .cp * { transition-duration:.01ms !important }
+}
+@media (prefers-contrast: more) {
+  .cp { border-color:var(--cp-fg2) }
+  .coach-cta { border-color:var(--neon); background:#03201C }
+  .cp-form, .cp-chips button, .cp-actions button { border-color:var(--cp-fg2) }
+  .cp-msg.me { outline:1px solid var(--cp-fg2) }
+}

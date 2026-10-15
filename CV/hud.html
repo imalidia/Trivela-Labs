@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Football Tactical Engine Pro | Cyber HUD 6.1</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--c-primary:#00ff87;--c-secondary:#60efff;--primary-rgb:0,255,135;--secondary-rgb:96,239,255}
+body{background:#030712;color:#f8fafc;font-family:'Plus Jakarta Sans',sans-serif;overflow-x:hidden}
+.font-orbitron{font-family:'Orbitron',monospace}.font-mono{font-family:'JetBrains Mono',monospace}
+.cyber-canvas-bg{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(circle at 10% 15%,rgba(var(--primary-rgb),.12) 0%,transparent 45%),radial-gradient(circle at 90% 85%,rgba(var(--secondary-rgb),.12) 0%,transparent 45%),radial-gradient(circle at 50% 50%,rgba(15,23,42,.75) 0%,transparent 75%)}
+.tactical-grid{position:fixed;inset:0;pointer-events:none;z-index:1;background-size:40px 40px;background-image:linear-gradient(to right,rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.02) 1px,transparent 1px);-webkit-mask-image:radial-gradient(ellipse at center,black 40%,transparent 80%);mask-image:radial-gradient(ellipse at center,black 40%,transparent 80%)}
+.glass-panel{background:rgba(10,16,30,.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 45px -10px rgba(0,0,0,.75);position:relative}
+.glass-panel-glow{border-color:rgba(var(--primary-rgb),.35);box-shadow:0 0 35px -5px rgba(var(--primary-rgb),.2)}
+.btn-cyber-primary,.tab.active{background:linear-gradient(135deg,var(--c-primary),var(--c-secondary));color:#030712;font-weight:800;letter-spacing:.08em;box-shadow:0 0 25px -4px rgba(var(--primary-rgb),.45);transition:all .3s cubic-bezier(.4,0,.2,1)}
+.btn-cyber-primary:hover:not(:disabled){transform:translateY(-2px) scale(1.01);box-shadow:0 0 35px -2px rgba(var(--secondary-rgb),.65)}
+.tab{color:#94a3b8;font-weight:700;transition:all .2s}.tab:not(.active):hover{color:#fff;background:rgba(255,255,255,.05)}
+.opt{border:1px solid rgba(255,255,255,.1);background:rgba(15,23,42,.6);transition:all .2s;text-align:left}
+.opt:hover{border-color:#64748b}
+.opt.active{border-color:var(--c-primary);background:rgba(var(--primary-rgb),.1);box-shadow:0 0 15px rgba(var(--primary-rgb),.25)}
+.tint{background:rgba(var(--primary-rgb),.12);border:1px solid rgba(var(--primary-rgb),.35);color:var(--c-primary)}
+.corner-reticle::before,.corner-reticle::after{content:'';position:absolute;width:10px;height:10px;pointer-events:none}
+.corner-reticle::before{top:-1px;left:-1px;border-top:2px solid var(--c-primary);border-left:2px solid var(--c-primary)}
+.corner-reticle::after{bottom:-1px;right:-1px;border-bottom:2px solid var(--c-secondary);border-right:2px solid var(--c-secondary)}
+@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(1000%)}}
+.scanline-beam{position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,transparent,var(--c-primary),var(--c-secondary),transparent);animation:scanline 8s linear infinite;opacity:.35;pointer-events:none}
+@keyframes dual-shimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.dual-gradient-bar{background:linear-gradient(270deg,var(--c-primary),var(--c-secondary),var(--c-primary));background-size:250% 250%;animation:dual-shimmer 3s ease infinite}
+.custom-scrollbar::-webkit-scrollbar{width:5px}.custom-scrollbar::-webkit-scrollbar-track{background:rgba(5,8,16,.5)}
+.custom-scrollbar::-webkit-scrollbar-thumb{background:linear-gradient(to bottom,var(--c-primary),var(--c-secondary));border-radius:9999px}
+.stat{background:rgba(2,6,23,.7);border:1px solid rgba(255,255,255,.08)}
+.carrier-row{border-color:#f59e0b!important;background:rgba(120,53,15,.35)!important}
+.pinned-row{box-shadow:0 0 0 1px var(--c-primary)}
+.off-row{opacity:.5}
+.chip{padding:.25rem .6rem;border-radius:.6rem;font-size:11px}
+.ev-row{display:flex;gap:.5rem;align-items:center;width:100%;text-align:left;padding:.35rem .5rem;border-radius:.6rem;font-size:11px}
+.ev-row:hover{background:rgba(255,255,255,.06)}
+</style>
+</head>
+<body class="min-h-screen relative flex flex-col items-center p-3 sm:p-6 md:p-8">
+<div class="cyber-canvas-bg"></div><div class="tactical-grid"></div>
+
+<div class="max-w-6xl w-full relative z-10 space-y-6">
+  <header class="glass-panel corner-reticle rounded-2xl p-4 sm:p-5 flex flex-wrap justify-between items-center gap-4">
+    <div class="flex items-center gap-3.5">
+      <div class="relative w-12 h-12 rounded-xl flex items-center justify-center p-[1px] bg-gradient-to-br from-[var(--c-primary)] to-[var(--c-secondary)]">
+        <div class="w-full h-full bg-[#070b14] rounded-xl flex items-center justify-center">
+          <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        </div>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-orbitron text-lg sm:text-xl font-black tracking-wider text-white">TACTICAL VISION</h1>
+          <span class="font-mono text-[10px] px-2 py-0.5 rounded font-black bg-gradient-to-r from-[var(--c-primary)] to-[var(--c-secondary)] text-black">PRO v7.0</span>
+        </div>
+        <p class="font-mono text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--c-primary)] animate-ping"></span>
+          <span>PRECISION SCAN</span><span>•</span><span class="text-slate-300">DEEP MATCH ANALYTICS</span>
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:flex flex-col text-right font-mono pr-3 border-r border-white/10">
+        <span class="text-[10px] text-slate-400 uppercase tracking-widest">NEURAL ACCELERATOR</span>
+        <span class="text-xs font-bold text-white flex items-center justify-end gap-1.5"><span class="w-2 h-2 rounded-full bg-[var(--c-primary)] animate-pulse"></span><span id="deviceName">DETECTING...</span></span>
+      </div>
+      <button id="btnOpenSettings" class="p-2.5 rounded-xl glass-panel hover:border-white/30 text-slate-300 hover:text-white transition flex items-center gap-2 font-mono text-xs">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10l1.4 1.4M3 12h2m14 0h2M5.6 18.4L7 17m10-10l1.4-1.4M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span class="hidden md:inline font-bold">THEME HUD</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-2 gap-2 glass-panel p-1.5 rounded-2xl border border-white/5 font-mono text-xs">
+    <button id="tabUpload" class="tab active py-3 rounded-xl flex items-center justify-center gap-2">UPLOAD MATCH FOOTAGE</button>
+    <button id="tabLocal" class="tab py-3 rounded-xl flex items-center justify-center gap-2">SERVER VIDEOS FOLDER</button>
+  </div>
+
+  <!-- ENGINE SETTINGS -->
+  <div class="glass-panel p-5 rounded-2xl space-y-4">
+    <div>
+      <div class="flex justify-between items-center mb-2.5">
+        <span class="text-xs uppercase font-extrabold text-slate-300 font-mono tracking-wider">OUTPUT RESOLUTION</span>
+        <span class="text-[11px] text-slate-400 font-mono">Aspect ratio kept • never upscaled</span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button type="button" data-res="720p" class="res-btn opt active p-3 rounded-xl"><div class="text-xs font-black text-white">⚡ 720p</div><div class="text-[11px] text-[var(--c-primary)] font-mono font-bold">Fastest • default</div></button>
+        <button type="button" data-res="1080p" class="res-btn opt p-3 rounded-xl"><div class="text-xs font-black text-white">🎯 1080p</div><div class="text-[11px] text-[var(--c-primary)] font-mono font-bold">Broadcast</div></button>
+        <button type="button" data-res="1440p" class="res-btn opt p-3 rounded-xl"><div class="text-xs font-black text-white">💎 1440p</div><div class="text-[11px] text-[var(--c-secondary)] font-mono font-bold">Crisp pro</div></button>
+        <button type="button" data-res="source" class="res-btn opt p-3 rounded-xl"><div class="text-xs font-black text-white">📼 Source</div><div class="text-[11px] text-[var(--c-secondary)] font-mono font-bold">Original size</div></button>
+      </div>
+    </div>
+    <div>
+      <div class="flex justify-between items-center mb-2.5">
+        <span class="text-xs uppercase font-extrabold text-slate-300 font-mono tracking-wider">SCAN PRECISION</span>
+        <span class="text-[11px] text-slate-400 font-mono">How often the detector runs &amp; at what size (batched on GPU)</span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <button type="button" data-mode="lightning" class="mode-btn opt p-3 rounded-xl"><div class="text-xs font-black text-white">⚡ Lightning</div><div class="text-[11px] text-slate-400 font-mono">960px • every 4th frame • fastest</div></button>
+        <button type="button" data-mode="fast" class="mode-btn opt active p-3 rounded-xl"><div class="text-xs font-black text-white">🚀 Turbo</div><div class="text-[11px] text-slate-400 font-mono">960px • every 2nd frame • default</div></button>
+        <button type="button" data-mode="balanced" class="mode-btn opt p-3 rounded-xl"><div class="text-xs font-black text-white">⚖️ Balanced</div><div class="text-[11px] text-slate-400 font-mono">1280px • every 2nd frame</div></button>
+        <button type="button" data-mode="ultra" class="mode-btn opt p-3 rounded-xl"><div class="text-xs font-black text-white">🔬 Ultra</div><div class="text-[11px] text-slate-400 font-mono">1600px • every frame • best ball</div></button>
+      </div>
+    </div>
+  </div>
+
+  <label class="glass-panel rounded-2xl px-5 py-3 flex items-center gap-3 text-xs font-mono text-slate-300 cursor-pointer"><input type="checkbox" id="optBurn" checked> Burn graphics into the video (untick for a clean video with fully toggleable live overlays)</label>
+  <label class="glass-panel rounded-2xl px-5 py-3 flex items-center gap-3 text-xs font-mono text-slate-300 cursor-pointer"><input type="checkbox" id="optReid" checked> Persistent player IDs: the same player keeps one ID across camera cuts and while off-screen (matched by head, shirt, shorts &amp; socks colours)</label>
+  <label class="glass-panel rounded-2xl px-5 py-3 flex items-center gap-3 text-xs font-mono text-slate-300">Upload streams <select id="upStreams" class="bg-slate-900 border border-white/10 rounded-lg px-2 py-1"><option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select> <span class="text-slate-500">(if upload feels slow, try 1–2; or skip uploading entirely with the SERVER VIDEOS FOLDER tab)</span></label>
+  <div id="panelUpload" class="space-y-5">
+    <div id="dropZone" class="glass-panel corner-reticle rounded-3xl p-10 sm:p-14 text-center cursor-pointer transition-all duration-300 relative overflow-hidden group hover:border-[var(--c-primary)]">
+      <div class="scanline-beam"></div>
+      <input type="file" id="fileInput" class="hidden" accept="video/*" />
+      <div class="relative z-10 flex flex-col items-center">
+        <div class="w-20 h-20 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center mb-4 group-hover:scale-110 group-hover:border-[var(--c-primary)] transition-all duration-300">
+          <svg class="w-9 h-9 text-[var(--c-primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        </div>
+        <h3 class="text-base sm:text-lg font-extrabold text-white tracking-wide">Drop Match Broadcast or Click to Browse</h3>
+        <p class="text-xs text-slate-400 font-mono mt-1 max-w-md">Resumable chunk upload • corrupt containers repaired automatically</p>
+        <p id="selectedFileText" class="text-xs font-mono font-bold mt-4 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-[var(--c-primary)] hidden"></p>
+      </div>
+    </div>
+    <button id="uploadBtn" disabled class="w-full py-4 rounded-2xl bg-slate-800/80 text-slate-500 font-black tracking-wider text-sm shadow-xl transition-all duration-300 cursor-not-allowed uppercase font-mono">START TACTICAL ANALYSIS</button>
+  </div>
+
+  <div id="panelLocal" class="hidden glass-panel corner-reticle rounded-3xl p-6 sm:p-8 space-y-4">
+    <div>
+      <label class="text-xs uppercase font-extrabold text-slate-300 font-mono tracking-wider">Server Video Path</label>
+      <p class="text-xs text-slate-400 mt-1 mb-3">A file in CV/videos (mounted at /content), e.g. match.mp4.</p>
+      <input type="text" id="localFileInput" placeholder="match.mp4 or /content/drive/MyDrive/match.mp4" class="w-full bg-slate-950/80 border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-[var(--c-primary)] font-mono transition" />
+    </div>
+    <button id="localStartBtn" class="w-full py-4 rounded-xl btn-cyber-primary font-black text-sm uppercase tracking-wider font-mono">ANALYZE INSTANT FILE (0s Upload)</button>
+  </div>
+
+  <div id="errorBanner" class="hidden glass-panel border-red-500/50 bg-red-950/40 text-red-200 px-5 py-4 rounded-2xl text-xs font-mono shadow-2xl flex items-center gap-3">
+    <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span><span id="errorText"></span>
+  </div>
+
+  <div id="statusCard" class="hidden glass-panel corner-reticle rounded-3xl p-6 sm:p-8 space-y-5">
+    <div class="flex flex-wrap justify-between items-center gap-2">
+      <div>
+        <span id="badgeStatus" class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-white/5 border border-white/10 text-[var(--c-primary)] tracking-wider">INITIALIZING</span>
+        <h2 id="phaseLabel" class="text-lg sm:text-xl font-black text-white mt-2 font-orbitron tracking-wide">AI Telemetry Processing...</h2>
+      </div>
+      <div class="text-right font-mono">
+        <span id="rateStat" class="text-[var(--c-primary)] font-black text-xl">0.0 FPS</span>
+        <div id="frameCounter" class="text-slate-400 text-xs mt-0.5">Frame: 0 / 0</div>
+      </div>
+    </div>
+    <div class="w-full bg-slate-950 rounded-full h-3.5 overflow-hidden p-0.5 border border-white/10"><div id="progressBar" class="dual-gradient-bar h-full rounded-full transition-all duration-300" style="width:0%"></div></div>
+    <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+      <span id="percentageText">0%</span><span id="subDetailText">Processing</span>
+      <button id="cancelBtn" class="px-3 py-1 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 transition hidden">CANCEL</button>
+    </div>
+  </div>
+
+  <div id="previewCard" class="hidden glass-panel corner-reticle rounded-3xl p-5 sm:p-7 space-y-5">
+    <div class="flex flex-wrap justify-between items-center gap-2 pb-3 border-b border-white/10">
+      <div>
+        <span class="px-3 py-1 rounded-full text-xs font-mono font-extrabold tint">● ANALYSIS SYNCHRONIZED</span>
+        <h2 class="text-lg sm:text-xl font-black text-white mt-1.5 font-orbitron">Tactical Pitch Inspector</h2>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
+        <span id="activeResBadge" class="text-slate-400 px-3 py-1.5 rounded-lg bg-slate-900 border border-white/10"></span>
+        <button id="snapBtn" class="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:border-[var(--c-primary)] transition">📸 SNAPSHOT</button>
+        <button id="csvBtn" class="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:border-[var(--c-primary)] transition">⬇ CSV</button>
+        <a id="dlVideo" class="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:border-[var(--c-primary)] transition" download="tactical_output.mp4">⬇ VIDEO</a>
+        <a id="dlMeta" class="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:border-[var(--c-primary)] transition" download="tactical_metadata.json">⬇ JSON</a>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div class="xl:col-span-2 space-y-3">
+        <div id="stage" class="relative rounded-2xl overflow-hidden border border-white/10 bg-black shadow-2xl" style="aspect-ratio:16/9">
+          <video id="player" controls playsinline preload="auto" class="absolute inset-0 w-full h-full"></video>
+          <canvas id="overlayCanvas" class="absolute top-0 left-0 w-full h-full pointer-events-none" style="bottom:48px"></canvas>
+        </div>
+        <canvas id="timeline" class="w-full rounded-lg border border-white/10 cursor-pointer" height="44" title="Possession strip (A/B colours), wide-shot bands and events. Click to seek."></canvas>
+        <div class="flex flex-wrap items-center gap-2 font-mono text-xs text-slate-300">
+          <button id="stepBack" class="opt chip">⏮ −1f</button><button id="stepFwd" class="opt chip">+1f ⏭</button>
+          <select id="speedSel" class="bg-slate-900 border border-white/10 rounded-lg px-2 py-1"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+          <span class="text-slate-500 mx-1">|</span>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="optLabels" checked> Labels</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="optCarrierOnly"> Carrier only</label>
+          <label class="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" id="optDim" checked> Dim others when pinned</label>
+          <span class="text-slate-500 mx-1">|</span>
+          <span id="lblChips" class="flex gap-1">
+            <button data-f="all" class="opt active chip">All</button><button data-f="0" class="opt chip">A</button><button data-f="1" class="opt chip">B</button><button data-f="2" class="opt chip">GK</button><button data-f="3" class="opt chip">REF</button>
+          </span>
+        </div>
+        <p class="text-[10px] font-mono text-slate-500">Shortcuts: Space play/pause • ←/→ step frame (Shift = 1s) • L labels • P unpin • M mute</p>
+      </div>
+
+      <div class="bg-slate-950/80 border border-white/10 rounded-2xl p-4 flex flex-col h-[680px] xl:h-auto shadow-inner">
+        <div class="p-3.5 rounded-xl bg-gradient-to-r from-amber-950/30 via-slate-900 to-slate-950 border border-amber-500/40 flex items-center justify-between text-xs font-mono mb-3 shadow-lg">
+          <span class="text-amber-400 uppercase font-black flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>⚽ POSSESSION</span>
+          <span id="ballCarrierHud" class="text-amber-300 font-bold px-2 py-0.5 rounded bg-black/60 border border-amber-500/30">Free ball</span>
+        </div>
+        <div class="mb-3">
+          <div class="flex justify-between text-[11px] font-mono mb-1"><span id="possTxtA" class="font-bold">A 0%</span><span class="text-slate-500">LIVE TEAM POSSESSION</span><span id="possTxtB" class="font-bold">B 0%</span></div>
+          <div class="h-2.5 rounded-full overflow-hidden flex bg-slate-800"><div id="possBarA" style="width:50%"></div><div id="possBarB" style="width:50%"></div></div>
+        </div>
+        <div id="pinCard" class="hidden mb-3 p-3 rounded-xl stat text-xs font-mono space-y-1.5">
+          <div class="flex justify-between items-center"><span id="pinName" class="font-black text-white"></span><button id="pinClear" class="text-slate-400 hover:text-white">✕ unpin</button></div>
+          <div id="pinStats" class="grid grid-cols-3 gap-2 text-[11px] text-slate-300"></div>
+        </div>
+        <div class="flex justify-between items-center pb-2 border-b border-white/10 mb-2">
+          <h3 class="text-xs font-extrabold text-white uppercase tracking-wider font-mono flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-[var(--c-primary)]"></span>SQUAD</h3>
+          <span id="playerCount" class="text-xs font-mono text-slate-400">0</span>
+        </div>
+        <div class="flex gap-2 mb-2 font-mono text-[11px]">
+          <button data-m="live" class="rmode opt active chip">On screen</button><button data-m="all" class="rmode opt chip">All tracked</button>
+          <input id="rosterSearch" placeholder="search…" class="flex-1 min-w-0 bg-slate-900 border border-white/10 rounded-lg px-2 py-1 focus:outline-none focus:border-[var(--c-primary)]">
+          <select id="rosterSort" class="bg-slate-900 border border-white/10 rounded-lg px-1 py-1"><option value="team">Team</option><option value="id">ID</option><option value="touches">Touches</option><option value="speed">Top speed</option><option value="dist">Distance</option></select>
+        </div>
+        <div id="rosterList" class="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar"></div>
+      </div>
+    </div>
+
+    <div id="statsGrid" class="grid grid-cols-2 md:grid-cols-5 gap-3 font-mono"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 font-mono">
+      <div class="stat rounded-xl p-3 flex flex-col h-72">
+        <div class="flex justify-between items-center mb-2"><span class="text-xs font-black text-white uppercase tracking-wider">Match events</span>
+          <select id="evFilter" class="bg-slate-900 border border-white/10 rounded-lg px-1 py-0.5 text-[11px]"><option value="all">All</option><option value="pass">Passes</option><option value="won">Ball won</option><option value="strike">Strikes</option><option value="sprint">Sprints</option></select></div>
+        <div id="eventList" class="flex-1 overflow-y-auto custom-scrollbar space-y-0.5"></div>
+      </div>
+      <div class="stat rounded-xl p-3 flex flex-col h-72">
+        <span class="text-xs font-black text-white uppercase tracking-wider mb-2">Fastest runners (est.)</span>
+        <div id="speedList" class="flex-1 overflow-y-auto custom-scrollbar space-y-0.5"></div>
+      </div>
+      <div class="stat rounded-xl p-3 flex flex-col h-72">
+        <span class="text-xs font-black text-white uppercase tracking-wider mb-2">Passing links</span>
+        <div id="linkList" class="flex-1 overflow-y-auto custom-scrollbar space-y-0.5"></div>
+      </div>
+    </div>
+    <div class="stat rounded-xl p-3 font-mono">
+      <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+        <span class="text-xs font-black text-white uppercase tracking-wider">🏃 Distance run per player ID (est.)</span>
+        <span id="distTotals" class="text-[11px] text-slate-400"></span>
+      </div>
+      <div id="distList" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 max-h-80 overflow-y-auto custom-scrollbar pr-1"></div>
+    </div>
+    <p class="text-[10px] text-slate-500 font-mono">Speeds, distances and ball speed are camera-compensated estimates (player height used as a ruler). With persistent IDs on, each player keeps one ID (A1, B4, GK1, REF1…) across cuts and while off-screen; they are matched by colour signature, so same-kit teammates are the hardest case — check the ID confidence in the pinned card. With it off, IDs restart after every cut.</p>
+  </div>
+</div>
+
+<!-- THEME MODAL -->
+<div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+  <div class="glass-panel corner-reticle rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-6 border border-white/15 shadow-2xl transform scale-95 transition-transform duration-300" id="settingsModalCard">
+    <div class="flex justify-between items-center pb-4 border-b border-white/10">
+      <h3 class="font-orbitron text-lg font-bold text-white">THEME CUSTOMIZER</h3>
+      <button id="btnCloseSettings" class="text-slate-400 hover:text-white transition p-1 text-xl">✕</button>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div class="bg-slate-900/80 p-3.5 rounded-xl border border-white/10 space-y-2">
+        <label class="text-[11px] font-mono font-bold text-slate-300 uppercase">Primary Accent</label>
+        <div class="flex items-center gap-2"><input type="color" id="primaryPicker" value="#00ff87" class="w-10 h-10 rounded-lg bg-transparent border-0 cursor-pointer" /><span id="primaryHexLabel" class="font-mono text-xs text-slate-300 font-bold">#00ff87</span></div>
+      </div>
+      <div class="bg-slate-900/80 p-3.5 rounded-xl border border-white/10 space-y-2">
+        <label class="text-[11px] font-mono font-bold text-slate-300 uppercase">Secondary Accent</label>
+        <div class="flex items-center gap-2"><input type="color" id="secondaryPicker" value="#60efff" class="w-10 h-10 rounded-lg bg-transparent border-0 cursor-pointer" /><span id="secondaryHexLabel" class="font-mono text-xs text-slate-300 font-bold">#60efff</span></div>
+      </div>
+    </div>
+    <div class="space-y-2.5">
+      <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400">TACTICAL PRESET KITS</span>
+      <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+        <button type="button" class="preset-btn p-2.5 rounded-xl bg-slate-900/60 border border-white/10 hover:border-white/30 text-left flex items-center gap-2" data-p="#00ff87" data-s="#60efff"><span class="w-4 h-4 rounded-full bg-gradient-to-r from-[#00ff87] to-[#60efff]"></span><span class="text-white font-bold">Cyber Emerald</span></button>
+        <button type="button" class="preset-btn p-2.5 rounded-xl bg-slate-900/60 border border-white/10 hover:border-white/30 text-left flex items-center gap-2" data-p="#ff007f" data-s="#7928ca"><span class="w-4 h-4 rounded-full bg-gradient-to-r from-[#ff007f] to-[#7928ca]"></span><span class="text-white font-bold">Neon Synth</span></button>
+        <button type="button" class="preset-btn p-2.5 rounded-xl bg-slate-900/60 border border-white/10 hover:border-white/30 text-left flex items-center gap-2" data-p="#f59e0b" data-s="#ef4444"><span class="w-4 h-4 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ef4444]"></span><span class="text-white font-bold">War Room Amber</span></button>
+        <button type="button" class="preset-btn p-2.5 rounded-xl bg-slate-900/60 border border-white/10 hover:border-white/30 text-left flex items-center gap-2" data-p="#00f0ff" data-s="#7000ff"><span class="w-4 h-4 rounded-full bg-gradient-to-r from-[#00f0ff] to-[#7000ff]"></span><span class="text-white font-bold">Hyper Velocity</span></button>
+      </div>
+    </div>
+    <button id="btnApplySettings" class="w-full py-3.5 rounded-xl btn-cyber-primary font-mono font-bold text-xs uppercase tracking-wider">APPLY THEME</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---------------- THEME ENGINE ---------------- //
+function hexToRgb(hex){hex=hex.replace('#','');if(hex.length===3)hex=hex.split('').map(x=>x+x).join('');const n=parseInt(hex,16);return `${(n>>16)&255}, ${(n>>8)&255}, ${n&255}`}
+function applyColors(p,s){
+  const r=document.documentElement;
+  r.style.setProperty('--c-primary',p);r.style.setProperty('--c-secondary',s);
+  r.style.setProperty('--primary-rgb',hexToRgb(p));r.style.setProperty('--secondary-rgb',hexToRgb(s));
+  $('primaryPicker').value=p;$('secondaryPicker').value=s;$('primaryHexLabel').innerText=p;$('secondaryHexLabel').innerText=s;
+  try{localStorage.setItem('tactical_p_color',p);localStorage.setItem('tactical_s_color',s)}catch(e){}
+}
+let sp='#00ff87',ss='#60efff';
+try{sp=localStorage.getItem('tactical_p_color')||sp;ss=localStorage.getItem('tactical_s_color')||ss}catch(e){}
+applyColors(sp,ss);
+$('primaryPicker').oninput=e=>applyColors(e.target.value,$('secondaryPicker').value);
+$('secondaryPicker').oninput=e=>applyColors($('primaryPicker').value,e.target.value);
+document.querySelectorAll('.preset-btn').forEach(b=>b.onclick=()=>applyColors(b.dataset.p,b.dataset.s));
+function openSettings(){$('settingsModal').classList.remove('hidden');setTimeout(()=>{$('settingsModal').classList.remove('opacity-0');$('settingsModalCard').classList.remove('scale-95')},10)}
+function closeSettings(){$('settingsModal').classList.add('opacity-0');$('settingsModalCard').classList.add('scale-95');setTimeout(()=>$('settingsModal').classList.add('hidden'),250)}
+$('btnOpenSettings').onclick=openSettings;$('btnCloseSettings').onclick=closeSettings;$('btnApplySettings').onclick=closeSettings;
+$('settingsModal').onclick=e=>{if(e.target===$('settingsModal'))closeSettings()};
+
+fetch('/api/info').then(r=>r.json()).then(i=>{$('deviceName').innerText=(i.gpu?'GPU • ':'CPU • ')+i.device.toUpperCase()}).catch(()=>{$('deviceName').innerText='UNKNOWN'});
+
+// ---------------- STATE ---------------- //
+let selectedFile=null,selRes='720p',selMode='fast',trackingData=null,segs=[],curCarrier=-2,loopOn=false;
+const nameMap={};
+const CHUNK_SIZE=8*1024*1024;
+const TEAM_KEYS=['team_a','team_b','goalkeeper','official'];
+const TEAM_NAMES=['Team A','Team B','GK','REF'];
+
+function bindGroup(sel,attr,setter){document.querySelectorAll(sel).forEach(b=>b.onclick=()=>{document.querySelectorAll(sel).forEach(x=>x.classList.remove('active'));b.classList.add('active');setter(b.dataset[attr])})}
+bindGroup('.res-btn','res',v=>selRes=v);
+bindGroup('.mode-btn','mode',v=>selMode=v);
+
+$('tabUpload').onclick=()=>{$('tabUpload').classList.add('active');$('tabLocal').classList.remove('active');$('panelUpload').classList.remove('hidden');$('panelLocal').classList.add('hidden')};
+$('tabLocal').onclick=()=>{$('tabLocal').classList.add('active');$('tabUpload').classList.remove('active');$('panelLocal').classList.remove('hidden');$('panelUpload').classList.add('hidden')};
+
+const dz=$('dropZone');
+dz.onclick=()=>$('fileInput').click();
+$('fileInput').onchange=e=>handleFile(e.target.files[0]);
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('glass-panel-glow')};
+dz.ondragleave=()=>dz.classList.remove('glass-panel-glow');
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('glass-panel-glow');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0])};
+function handleFile(f){
+  if(!f)return;selectedFile=f;
+  $('selectedFileText').innerText=`${f.name} (${(f.size/1048576).toFixed(1)} MB)`;$('selectedFileText').classList.remove('hidden');
+  const b=$('uploadBtn');b.disabled=false;b.classList.remove('bg-slate-800/80','text-slate-500','cursor-not-allowed');b.classList.add('btn-cyber-primary');
+}
+function showError(m){$('errorText').innerText=m;$('errorBanner').classList.remove('hidden')}
+function fmtEta(s){if(!s||s<=0)return '';const m=Math.floor(s/60);return m>0?`${m}m ${s%60}s left`:`${s}s left`}
+
+async function startAnalysis(fileName,source){
+  const fd=new FormData();fd.append('fileName',fileName);fd.append('targetRes',selRes);fd.append('mode',selMode);fd.append('source',source);fd.append('burn',$('optBurn').checked?'1':'0');fd.append('reid',$('optReid').checked?'1':'0');
+  const r=await fetch('/api/start-analysis',{method:'POST',body:fd});
+  if(!r.ok){let m='Failed to start analysis.';try{const j=await r.json();m=j.error||j.detail||m}catch(e){}throw new Error(m)}
+  poll();
+}
+
+$('localStartBtn').onclick=async()=>{
+  const fn=$('localFileInput').value.trim();
+  if(!fn)return alert('Enter the file name from the videos folder.');
+  $('previewCard').classList.add('hidden');$('statusCard').classList.remove('hidden');$('errorBanner').classList.add('hidden');
+  $('badgeStatus').innerText='LOCAL INGESTION';$('phaseLabel').innerText='Loading from the videos folder...';
+  try{await startAnalysis(fn,'local')}catch(e){$('statusCard').classList.add('hidden');showError(e.message)}
+};
+
+$('uploadBtn').onclick=async()=>{
+  if(!selectedFile)return;
+  const btn=$('uploadBtn');btn.disabled=true;dz.style.pointerEvents='none';$('errorBanner').classList.add('hidden');
+  $('previewCard').classList.add('hidden');$('statusCard').classList.remove('hidden');$('cancelBtn').classList.add('hidden');
+  $('badgeStatus').innerText='UPLOADING';$('phaseLabel').innerText='Streaming Video to Server...';
+  $('progressBar').style.width='0%';$('percentageText').innerText='0%';
+  try{
+    const total=Math.ceil(selectedFile.size/CHUNK_SIZE),t0=Date.now();let bytes=0,failed=null;
+    const send=async i=>{
+      const s=i*CHUNK_SIZE,e=Math.min(s+CHUNK_SIZE,selectedFile.size);let lastErr='';
+      for(let a=0;a<5;a++){
+        const fd=new FormData();fd.append('chunk',selectedFile.slice(s,e));fd.append('fileName',selectedFile.name);fd.append('chunkIndex',i);fd.append('totalChunks',total);fd.append('offset',s);
+        try{
+          const r=await fetch('/api/upload-chunk',{method:'POST',body:fd});
+          if(r.ok){
+            bytes+=e-s;const pct=(bytes/selectedFile.size*100).toFixed(1);
+            $('progressBar').style.width=pct+'%';$('percentageText').innerText=pct+'%';
+            $('rateStat').innerText=`${((bytes/1048576)/((Date.now()-t0)/1000+.1)).toFixed(1)} MB/s`;
+            $('subDetailText').innerText=`${(bytes/1048576).toFixed(0)} / ${(selectedFile.size/1048576).toFixed(0)} MB • ${$('upStreams').value} stream(s)`;
+            return;
+          }
+          const j=await r.json().catch(()=>({}));lastErr=j.error||('HTTP '+r.status);if(r.status===409||r.status===400)break;
+        }catch(err){lastErr=err.message;await new Promise(r=>setTimeout(r,600*(a+1)))}
+      }
+      throw new Error(`Packet ${i+1}/${total} failed: ${lastErr}`);
+    };
+    await send(0);
+    let next=1;
+    const worker=async()=>{while(failed===null){const i=next++;if(i>=total)return;try{await send(i)}catch(err){failed=err;throw err}}};
+    await Promise.all(Array.from({length:+$('upStreams').value},worker));
+    $('badgeStatus').innerText='INITIALIZING AI';$('rateStat').innerText='Active...';
+    await startAnalysis(selectedFile.name,'upload');
+  }catch(err){
+    $('statusCard').classList.add('hidden');showError('Upload Error: '+err.message);
+    btn.disabled=false;dz.style.pointerEvents='auto';
+  }
+};
+
+$('cancelBtn').onclick=()=>fetch('/api/cancel',{method:'POST'});
+
+async function poll(){
+  let d;
+  try{d=await (await fetch('/api/status')).json()}catch(e){setTimeout(poll,2000);return}
+  if(['scanning','processing','finalizing'].includes(d.status)){
+    $('previewCard').classList.add('hidden');$('statusCard').classList.remove('hidden');$('cancelBtn').classList.remove('hidden');
+    $('badgeStatus').innerText=d.status==='scanning'?'CALIBRATING':d.status==='finalizing'?'FINALIZING':'FOOTBALL AI ACTIVE';
+    $('phaseLabel').innerText=d.phase||'Processing...';
+    $('progressBar').style.width=d.progress+'%';$('percentageText').innerText=d.progress+'%';
+    $('rateStat').innerText=`${d.fps} FPS`;$('frameCounter').innerText=`Frame: ${d.current_frame} / ${d.total_frames||'?'}`;
+    $('subDetailText').innerText=fmtEta(d.eta)||'Detector + tracker + possession engine';
+    setTimeout(poll,900);
+  }else if(d.status==='completed'&&d.video_url){await loadResult(d)}
+  else if(d.status==='error'){$('statusCard').classList.add('hidden');showError('Analysis Error: '+d.error_msg);resetUploadUi()}
+  else if(d.status==='cancelled'){$('statusCard').classList.add('hidden');showError('Analysis cancelled.');resetUploadUi()}
+  else setTimeout(poll,1000);
+}
+function resetUploadUi(){dz.style.pointerEvents='auto';if(selectedFile)$('uploadBtn').disabled=false}
+
+async function loadResult(d){
+  try{
+    trackingData=await (await fetch(d.meta_url)).json();
+    buildPoss(trackingData.poss_events,trackingData.total_frames);
+    initUi();
+    $('statusCard').classList.add('hidden');$('previewCard').classList.remove('hidden');resetUploadUi();
+    $('stage').style.aspectRatio=`${trackingData.width} / ${trackingData.height}`;
+    const pf=trackingData.perf;$('activeResBadge').innerText=`${trackingData.width}×${trackingData.height} • ${trackingData.tracker}`+(pf?` • analysed in ${pf.seconds}s (${pf.fps} fps, ${pf.realtime}× realtime, ${pf.encoder}) • bottleneck: ${pf.bottleneck}`:'');
+    $('dlVideo').href=d.video_url;$('dlMeta').href=d.meta_url;
+    const p=$('player');
+    p.onloadedmetadata=()=>{$('overlayCanvas').width=p.videoWidth;$('overlayCanvas').height=p.videoHeight;startLoop()};
+    p.oncanplay=()=>{p.muted=true;p.play().catch(()=>{})};
+    p.src=d.video_url;p.load();
+  }catch(e){showError('Failed to initialize player: '+e.message)}
+}
+
+// ---------------- LIVE UI (v4) ---------------- //
+let lastF=0,tlStatic=null,pinned=null,recent=[],rosterSig='',rosterMode='live',lblFilter='all',saveT=null,nameKey='';
+const rowEls=new Map();
+const lab=id=>{const i=trackingData.id_info&&trackingData.id_info[id];return i?i.label:`#${id}`};
+const nm=id=>nameMap[id]||lab(id);
+let onScreen=new Set();
+const tcol=c=>trackingData.team_colors[TEAM_KEYS[c]]||'#fff';
+const fmtT=f=>{const s=Math.floor(f/trackingData.fps);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
+const seekF=f=>{$('player').currentTime=Math.max(0,f/trackingData.fps)};
+const pl=id=>(trackingData.stats.players[id]||{});
+
+function saveNames(){
+  clearTimeout(saveT);
+  saveT=setTimeout(()=>{try{localStorage.setItem(nameKey,JSON.stringify(nameMap))}catch(e){};buildEventList();buildSideLists();buildDistList()},500);
+}
+function initUi(){
+  Object.keys(nameMap).forEach(k=>delete nameMap[k]);
+  const td=trackingData;nameKey=`tactical_names_${td.width}x${td.height}x${td.total_frames}`;
+  try{Object.assign(nameMap,JSON.parse(localStorage.getItem(nameKey)||'{}'))}catch(e){}
+  rowEls.clear();recent=[];pinned=null;rosterSig='';curCarrier=-2;
+  rosterMode=(td.id_info&&Object.keys(td.id_info).length)?'all':'live';
+  document.querySelectorAll('.rmode').forEach(x=>x.classList.toggle('active',x.dataset.m===rosterMode));
+  $('rosterList').innerHTML='';
+  buildStats();buildEventList();buildSideLists();buildDistList();buildTimeline();updatePinCard();
+  $('playerCount').innerText=`${td.unique_ids.length} IDs`;
+}
+
+// ---- possession segments ----
+function buildPoss(ev,total){
+  segs=[];let a=0,b=0;
+  for(let i=0;i<ev.length;i++){
+    const s=ev[i][0],e=i+1<ev.length?ev[i+1][0]:total;
+    segs.push({s,e,team:ev[i][2],a,b});
+    if(ev[i][2]===0)a+=e-s;else if(ev[i][2]===1)b+=e-s;
+  }
+}
+function possAt(f){
+  let lo=0,hi=segs.length-1,k=-1;
+  while(lo<=hi){const m=(lo+hi)>>1;if(segs[m].s<=f){k=m;lo=m+1}else hi=m-1}
+  if(k<0)return [0,0];
+  const g=segs[k];let a=g.a,b=g.b;const dd=Math.max(0,Math.min(f,g.e)-g.s);
+  if(g.team===0)a+=dd;else if(g.team===1)b+=dd;
+  return [a,b];
+}
+function updatePoss(f){
+  const [a,b]=possAt(f),t=a+b,pa=t?a/t*100:50,pb=t?100-pa:50,tc=trackingData.team_colors;
+  $('possBarA').style.width=pa+'%';$('possBarB').style.width=pb+'%';
+  $('possBarA').style.background=tc.team_a;$('possBarB').style.background=tc.team_b;
+  $('possTxtA').innerText=`A ${t?pa.toFixed(0):'--'}%`;$('possTxtB').innerText=`B ${t?pb.toFixed(0):'--'}%`;
+}
+
+// ---- stats cards / side lists ----
+function buildStats(){
+  const s=trackingData.stats,tc=trackingData.team_colors;
+  const card=(t,v,sub)=>`<div class="stat rounded-xl p-3"><div class="text-[10px] uppercase text-slate-400 tracking-wider">${t}</div><div class="text-lg font-black text-white mt-1">${v}</div><div class="text-[10px] text-slate-500 mt-0.5">${sub||''}</div></div>`;
+  const ab=(x,y)=>`<span style="color:${tc.team_a}">${x}</span> / <span style="color:${tc.team_b}">${y}</span>`;
+  $('statsGrid').innerHTML=
+    card('Possession',ab(s.possession_a+'%',s.possession_b+'%'),'Team A / Team B')+
+    card('Passes',ab(s.passes_a,s.passes_b),'completed, A / B')+
+    card('Pass accuracy',ab(s.pass_acc_a+'%',s.pass_acc_b+'%'),'completed / (completed + lost)')+
+    card('Ball won',ab(s.gains_a,s.gains_b),'turnovers gained')+
+    card('Strikes',s.strikes,`ball > ${75} km/h (est.)`)+
+    card('Ball speed',`${s.ball_max_kmh} km/h`,`max • avg ${s.ball_avg_kmh} km/h`)+
+    card('Sprints',s.sprints,'> 25 km/h bursts')+
+    card('Ball tracked',`${s.ball_visible_pct}%`,'of wide-view frames')+
+    card('Players identified',s.reid_identities||trackingData.unique_ids.length,`${s.swaps_fixed} ID swaps fixed`)+
+    card('Tactical view',`${s.wide_pct}%`,`${trackingData.shots.length} shots • ${trackingData.unique_ids.length} IDs`);
+  if(s.shots_a==null)return;   // older analyses have no event stats
+  const mmss=v=>{const t=Math.round(v);return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`},est=' (est.)';
+  $('statsGrid').innerHTML+=
+    card('Shots',ab(s.shots_a,s.shots_b),`on target ${s.shots_on_a} / ${s.shots_on_b}`+est)+
+    card('xG',ab(s.xg_a.toFixed(2),s.xg_b.toFixed(2)),'expected goals'+est)+
+    card('Saves',ab(s.saves_a,s.saves_b),'by each goalkeeper'+est)+
+    card('Tackles',ab(s.tackles_a,s.tackles_b),`interceptions ${s.interceptions_a} / ${s.interceptions_b}`+est)+
+    card('Defensive actions',ab(s.def_actions_a,s.def_actions_b),'tackles + interceptions + clearances')+
+    card('Dispossessed',ab(s.dispossessed_a,s.dispossessed_b),'lost the ball to a tackle'+est)+
+    card('Dribbles',ab(s.dribbles_a,s.dribbles_b),'beat a close defender'+est)+
+    card('Crosses',ab(s.crosses_a,s.crosses_b),`completed ${s.crosses_ok_a} / ${s.crosses_ok_b}`+est)+
+    card('Long balls',ab(s.long_balls_a,s.long_balls_b),`completed (30 m+), tried ${s.long_balls_att_a} / ${s.long_balls_att_b}`)+
+    card('Box touches',ab(s.box_touches_a,s.box_touches_b),'in the opposition box'+est)+
+    card('Corners',ab(s.corners_a,s.corners_b),`free kicks ${s.free_kicks_a} / ${s.free_kicks_b}`+est)+
+    card('Final third',ab(mmss(s.final_third_s_a),mmss(s.final_third_s_b)),'ball in each side\'s attacking third')+
+    card('Fastest strike',ab(s.fastest_strike_a+' km/h',s.fastest_strike_b+' km/h'),'ball speed off the foot')+
+    card('Sprint speed',ab(s.sprint_kmh_a+' km/h',s.sprint_kmh_b+' km/h'),'average sprint peak');
+}
+function fmtDist(m){return m>=1000?`${(m/1000).toFixed(2)} km`:`${Math.round(m)} m`}
+function buildDistList(){
+  const td=trackingData,rows=td.unique_ids.map(id=>({id,code:td.team_info[id],d:pl(id).dist_m||0,s:pl(id).secs||0})).filter(r=>r.code!==3&&r.d>0).sort((a,b)=>b.d-a.d);
+  const max=rows.length?rows[0].d:1,tot=[0,0,0];
+  rows.forEach(r=>{if(r.code<3)tot[r.code]+=r.d});
+  $('distTotals').innerHTML=`Tracked total: <span style="color:${tcol(0)}">A ${fmtDist(tot[0])}</span> • <span style="color:${tcol(1)}">B ${fmtDist(tot[1])}</span> • GK ${fmtDist(tot[2])}`;
+  $('distList').innerHTML=rows.map(r=>`<button class="ev-row" data-id="${r.id}" title="Click to pin"><span class="w-2 h-2 rounded-full shrink-0" style="background:${tcol(r.code)}"></span><span class="text-slate-200 w-28 truncate">${nm(r.id)}</span><span class="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden"><span class="block h-full rounded-full" style="width:${Math.max(2,r.d/max*100)}%;background:${tcol(r.code)}"></span></span><span class="text-white font-bold w-20 text-right">${fmtDist(r.d)}</span><span class="text-slate-500 w-12 text-right">${Math.round(r.s)}s</span></button>`).join('')||'<div class="text-slate-500 text-xs p-2">No distance data.</div>';
+}
+$('distList').onclick=e=>{const b=e.target.closest('[data-id]');if(b)togglePin(+b.dataset.id)};
+function buildEventList(){
+  const td=trackingData,f=$('evFilter').value,icons={pass:'➡️',won:'🛡️',strike:'💥',sprint:'💨'};
+  const rows=td.events.filter(e=>f==='all'||e[1]===f).slice(0,500).map(e=>{
+    const col=e[3]>=0?tcol(e[3]):'#64748b';let txt='';
+    if(e[1]==='pass')txt=`${nm(e[4])} → ${nm(e[2])}`;
+    else if(e[1]==='won')txt=`${nm(e[2])} wins the ball`;
+    else if(e[1]==='strike')txt=`Strike ~${e[4]} km/h`;
+    else txt=`${nm(e[2])} sprint ${e[4]} km/h`;
+    return `<button class="ev-row" data-f="${e[0]}"><span class="text-slate-500 w-10">${fmtT(e[0])}</span><span>${icons[e[1]]||'•'}</span><span class="w-2 h-2 rounded-full" style="background:${col}"></span><span class="text-slate-200 truncate">${txt}</span></button>`;
+  });
+  $('eventList').innerHTML=rows.join('')||'<div class="text-slate-500 text-xs p-2">No events of this type.</div>';
+}
+function buildSideLists(){
+  const td=trackingData;
+  $('speedList').innerHTML=td.stats.top_speeds.map((r,i)=>`<button class="ev-row" data-f="${r[2]}"><span class="text-slate-500 w-5">${i+1}</span><span class="w-2 h-2 rounded-full" style="background:${tcol(r[3])}"></span><span class="text-slate-200 flex-1 truncate">${nm(r[0])}</span><span class="text-[var(--c-primary)] font-bold">${r[1]} km/h</span></button>`).join('')||'<div class="text-slate-500 text-xs p-2">No data.</div>';
+  $('linkList').innerHTML=td.links.slice(0,20).map(l=>`<div class="ev-row"><span class="text-slate-200 flex-1 truncate">${nm(l[0])} → ${nm(l[1])}</span><span class="text-[var(--c-secondary)] font-bold">×${l[2]}</span></div>`).join('')||'<div class="text-slate-500 text-xs p-2">No passes detected.</div>';
+}
+$('eventList').onclick=e=>{const b=e.target.closest('[data-f]');if(b)seekF(+b.dataset.f-trackingData.fps*2)};
+$('speedList').onclick=e=>{const b=e.target.closest('[data-f]');if(b)seekF(+b.dataset.f-trackingData.fps*2)};
+$('evFilter').onchange=buildEventList;
+
+// ---- timeline strip ----
+function buildTimeline(){
+  const cv=$('timeline'),td=trackingData;cv.width=cv.clientWidth||900;
+  const W=cv.width,H=cv.height,T=Math.max(1,td.total_frames);
+  tlStatic=document.createElement('canvas');tlStatic.width=W;tlStatic.height=H;const c=tlStatic.getContext('2d');
+  c.fillStyle='#050912';c.fillRect(0,0,W,H);
+  c.fillStyle='rgba(255,255,255,.08)';td.shots.forEach(s=>c.fillRect(s[0]/T*W,0,Math.max(1,(s[1]-s[0])/T*W),H));
+  segs.forEach(g=>{if(g.team<0)return;c.fillStyle=g.team===0?td.team_colors.team_a:td.team_colors.team_b;c.fillRect(g.s/T*W,6,Math.max(1,(g.e-g.s)/T*W),12)});
+  td.events.forEach(e=>{
+    const x=e[0]/T*W;
+    if(e[1]==='strike'){c.fillStyle='#fbbf24';c.fillRect(x,22,2,18)}
+    else if(e[1]==='pass'){c.fillStyle=tcol(e[3]);c.fillRect(x,26,1,8)}
+    else if(e[1]==='won'){c.fillStyle='#f87171';c.fillRect(x,22,1,6)}
+    else if(e[1]==='sprint'){c.fillStyle='#22d3ee';c.fillRect(x,34,1,6)}
+  });
+}
+function drawTimeline(f){
+  const cv=$('timeline');if(!tlStatic)return;
+  const c=cv.getContext('2d');c.drawImage(tlStatic,0,0);
+  const x=f/Math.max(1,trackingData.total_frames)*cv.width;c.fillStyle='#fff';c.fillRect(x-1,0,2,cv.height);
+}
+$('timeline').onclick=e=>{const r=e.target.getBoundingClientRect();seekF((e.clientX-r.left)/r.width*trackingData.total_frames)};
+let rsT=null;window.addEventListener('resize',()=>{clearTimeout(rsT);rsT=setTimeout(()=>{if(trackingData){buildTimeline();drawTimeline(lastF)}},250)});
+
+// ---- roster (carrier jumps to the TOP; nothing scrolls the user around) ----
+function rowFor(id){
+  let r=rowEls.get(id);if(r)return r;
+  const td=trackingData,code=td.team_info[id],col=tcol(code),st=pl(id);
+  r=document.createElement('div');r.dataset.id=id;
+  r.className='flex items-center gap-2 bg-slate-900/60 p-2 rounded-xl border border-white/5 hover:border-white/20 transition cursor-pointer';
+  r.innerHTML=`<span class="px-2 py-1 rounded-lg text-xs font-mono font-black min-w-[46px] text-center" style="background:${col}33;border:1px solid ${col};color:#fff">${lab(id)}</span>
+    <input type="text" value="${nameMap[id]||''}" placeholder="${lab(id)} · ${TEAM_NAMES[code]}" class="flex-1 min-w-0 bg-slate-950/80 border border-white/10 focus:border-[var(--c-primary)] rounded-lg px-2 py-1 text-xs text-white focus:outline-none transition" />
+    <span class="text-[10px] font-mono text-slate-400 whitespace-nowrap" title="touches • top speed">${st.touches||0}✋ ${st.top_kmh||0}</span>
+    <button class="seek text-slate-400 hover:text-white text-xs" title="Jump to first appearance">⏵</button>
+    <span class="ball hidden px-1.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/60 text-xs animate-bounce">⚽</span>`;
+  const inp=r.querySelector('input');
+  inp.addEventListener('input',e=>{const v=e.target.value.trim();if(v)nameMap[id]=v;else delete nameMap[id];saveNames()});
+  inp.addEventListener('click',e=>e.stopPropagation());
+  r.querySelector('.seek').onclick=e=>{e.stopPropagation();const fs=td.first_seen[id];if(fs!==undefined)seekF(fs)};
+  r.onclick=()=>togglePin(id);
+  rowEls.set(id,r);return r;
+}
+function styleRows(){
+  rowEls.forEach((r,id)=>{
+    r.classList.toggle('carrier-row',id===curCarrier);
+    r.classList.toggle('pinned-row',id===pinned);
+    r.classList.toggle('off-row',!onScreen.has(id));
+    r.querySelector('.ball').classList.toggle('hidden',id!==curCarrier);
+  });
+}
+function updateRoster(fr){
+  onScreen=new Set(fr?fr.p.map(p=>p[0]):[]);
+  const td=trackingData,q=$('rosterSearch').value.trim().toLowerCase(),sort=$('rosterSort').value;
+  let ids=rosterMode==='live'?(fr?fr.p.map(p=>p[0]):[]):[...td.unique_ids].sort((a,b)=>(td.track_len[b]||0)-(td.track_len[a]||0)).slice(0,300);
+  ids=ids.filter(id=>td.team_info[id]!==undefined);
+  if(q)ids=ids.filter(id=>String(id).includes(q)||nm(id).toLowerCase().includes(q));
+  const key={team:id=>td.team_info[id]*1e7+id,id:id=>id,touches:id=>-(pl(id).touches||0),speed:id=>-(pl(id).top_kmh||0),dist:id=>-(pl(id).dist_m||0)}[sort];
+  ids.sort((a,b)=>key(a)-key(b));
+  const head=[];
+  if(curCarrier>0&&ids.includes(curCarrier))head.push(curCarrier);
+  recent.forEach(r=>{if(r!==curCarrier&&ids.includes(r)&&head.length<4)head.push(r)});
+  ids=[...head,...ids.filter(id=>!head.includes(id))];
+  $('playerCount').innerText=rosterMode==='live'?`${ids.length} on screen`:`${ids.length} tracked`;
+  const sig=`${rosterMode}|${sort}|${q}|${curCarrier}|${recent.join(',')}|${pinned}|${ids.join(',')}`;
+  if(sig===rosterSig)return;
+  const ae=document.activeElement;
+  if(ae&&ae.tagName==='INPUT'&&ae.closest('#rosterList'))return;
+  rosterSig=sig;
+  $('rosterList').replaceChildren(...ids.map(rowFor));
+  styleRows();
+}
+function setCarrier(id){
+  if(id===curCarrier)return;
+  if(curCarrier>0)recent=[curCarrier,...recent.filter(r=>r!==curCarrier&&r!==id)].slice(0,3);
+  curCarrier=id;
+  $('ballCarrierHud').innerText=id>0?nm(id):'Free ball';
+  if(id>0)$('rosterList').scrollTop=0;
+}
+document.querySelectorAll('.rmode').forEach(b=>b.onclick=()=>{document.querySelectorAll('.rmode').forEach(x=>x.classList.remove('active'));b.classList.add('active');rosterMode=b.dataset.m;rosterSig=''});
+$('rosterSearch').oninput=()=>{rosterSig=''};$('rosterSort').onchange=()=>{rosterSig=''};
+
+// ---- pin / spotlight ----
+function togglePin(id){pinned=pinned===id?null:id;rosterSig='';updatePinCard();renderAt(lastF)}
+function updatePinCard(){
+  const c=$('pinCard');
+  if(pinned===null){c.classList.add('hidden');return}
+  const st=pl(pinned),code=trackingData.team_info[pinned],info=trackingData.id_info&&trackingData.id_info[pinned];
+  c.classList.remove('hidden');
+  $('pinName').innerHTML=`<span style="color:${tcol(code)}">●</span> ${nm(pinned)} <span class="text-slate-500 font-normal">${TEAM_NAMES[code]}</span>`;
+  const cell=(l,v)=>`<div><div class="text-slate-500">${l}</div><div class="text-white font-bold">${v}</div></div>`;
+  $('pinStats').innerHTML=cell('Touches',st.touches||0)+cell('On ball',(st.on_ball_s||0)+'s')+cell('Tracked',(st.secs||0)+'s')+cell('Distance',(st.dist_m||0)+' m')+cell('Top speed',(st.top_kmh||0)+' km/h')+cell('Sprints',st.sprints||0)+(info?cell('ID confidence',info.conf+'%')+cell('Matched in',info.tracklets+' shots'):'');
+}
+$('pinClear').onclick=()=>{if(pinned!==null)togglePin(pinned)};
+
+// ---- label filter chips ----
+document.querySelectorAll('#lblChips button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#lblChips button').forEach(x=>x.classList.remove('active'));b.classList.add('active');lblFilter=b.dataset.f;renderAt(lastF)});
+['optLabels','optCarrierOnly','optDim'].forEach(i=>$(i).onchange=()=>renderAt(lastF));
+
+// ---- playback helpers ----
+$('stepBack').onclick=()=>{const p=$('player');p.pause();p.currentTime=Math.max(0,p.currentTime-1/trackingData.fps)};
+$('stepFwd').onclick=()=>{const p=$('player');p.pause();p.currentTime+=1/trackingData.fps};
+$('speedSel').onchange=e=>{$('player').playbackRate=+e.target.value};
+document.addEventListener('keydown',e=>{
+  if(!trackingData||['INPUT','SELECT','TEXTAREA'].includes((e.target.tagName||'')))return;
+  const p=$('player'),fps=trackingData.fps;
+  if(e.code==='Space'){e.preventDefault();p.paused?p.play():p.pause()}
+  else if(e.code==='ArrowRight'){p.pause();p.currentTime+=e.shiftKey?1:1/fps}
+  else if(e.code==='ArrowLeft'){p.pause();p.currentTime=Math.max(0,p.currentTime-(e.shiftKey?1:1/fps))}
+  else if(e.key==='l'||e.key==='L'){$('optLabels').checked=!$('optLabels').checked;renderAt(lastF)}
+  else if(e.key==='p'||e.key==='P'){if(pinned!==null)togglePin(pinned)}
+  else if(e.key==='m'||e.key==='M'){p.muted=!p.muted}
+});
+$('snapBtn').onclick=()=>{
+  const p=$('player'),c=document.createElement('canvas');c.width=p.videoWidth;c.height=p.videoHeight;
+  const x=c.getContext('2d');x.drawImage(p,0,0);x.drawImage($('overlayCanvas'),0,0);
+  c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`snapshot_f${lastF}.png`;a.click()});
+};
+$('csvBtn').onclick=()=>{
+  const td=trackingData,rows=[['id','name','team','seconds_tracked','touches','on_ball_s','distance_m_est','top_speed_kmh_est','sprints']];
+  td.unique_ids.forEach(id=>{const s=pl(id);rows.push([lab(id),(nameMap[id]||'').replace(/,/g,' '),TEAM_NAMES[td.team_info[id]],s.secs,s.touches,s.on_ball_s,s.dist_m,s.top_kmh,s.sprints])});
+  const b=new Blob([rows.map(r=>r.join(',')).join(String.fromCharCode(10))],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tactical_players.csv';a.click();
+};
+
+// ---------------- OVERLAY RENDER ---------------- //
+function startLoop(){
+  if(loopOn)return;loopOn=true;const p=$('player');
+  const at=f=>renderAt(f);
+  if('requestVideoFrameCallback' in p){
+    const cb=(now,meta)=>{if(trackingData)at(Math.round(meta.mediaTime*trackingData.fps));p.requestVideoFrameCallback(cb)};
+    p.requestVideoFrameCallback(cb);
+  }else{const tick=()=>{if(trackingData)at(Math.round(p.currentTime*trackingData.fps));requestAnimationFrame(tick)};tick()}
+  ['seeked','pause'].forEach(ev=>p.addEventListener(ev,()=>{if(trackingData)at(Math.round(p.currentTime*trackingData.fps))}));
+}
+function drawGraphics(ctx,f,fr,cv){
+  const td=trackingData,lw=Math.max(2,cv.height/450);
+  for(const [id,x1,y1,x2,y2,code] of fr.p){
+    const cx=(x1+x2)/2,ax=Math.max(8,(x2-x1)*.62),ay=Math.max(3,ax*.32),car=id===fr.c;
+    ctx.beginPath();ctx.ellipse(cx,y2,ax,ay,0,-.5,3.67);ctx.strokeStyle='#000';ctx.lineWidth=lw+2;ctx.stroke();
+    ctx.strokeStyle=tcol(code);ctx.lineWidth=lw;ctx.stroke();
+    if(car){
+      ctx.beginPath();ctx.ellipse(cx,y2,ax*1.3,ay*1.35,0,0,6.29);ctx.strokeStyle='#ffd700';ctx.lineWidth=lw+1;ctx.stroke();
+      ctx.fillStyle='#ffd700';ctx.beginPath();ctx.moveTo(cx-8,y1-20);ctx.lineTo(cx+8,y1-20);ctx.lineTo(cx,y1-6);ctx.fill();
+    }
+  }
+  if(fr.b){ctx.beginPath();ctx.arc(fr.b[0],fr.b[1],7,0,6.29);ctx.fillStyle=fr.b[2]?'#aaa':'#fff';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#000';ctx.stroke()}
+}
+function drawPinned(ctx,f,fr,cv){
+  if(pinned===null)return;
+  const pts=[];
+  for(let k=Math.max(0,f-60);k<=f;k+=2){const q=trackingData.frames[k];if(!q)continue;const p=q.p.find(r=>r[0]===pinned);if(p)pts.push([(p[1]+p[3])/2,p[4]])}
+  const col=getComputedStyle(document.documentElement).getPropertyValue('--c-primary').trim()||'#00ff87';
+  if(pts.length>1){ctx.beginPath();pts.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));ctx.strokeStyle=col;ctx.lineWidth=Math.max(2,cv.height/400);ctx.globalAlpha=.8;ctx.stroke();ctx.globalAlpha=1}
+  const p=fr.p.find(r=>r[0]===pinned);
+  if(p){ctx.shadowColor=col;ctx.shadowBlur=18;ctx.strokeStyle=col;ctx.lineWidth=Math.max(2,cv.height/360);ctx.strokeRect(p[1]-4,p[2]-4,p[3]-p[1]+8,p[4]-p[2]+8);ctx.shadowBlur=0}
+}
+function drawLabels(ctx,fr,cv){
+  if(!$('optLabels').checked)return;
+  const only=$('optCarrierOnly').checked,dim=$('optDim').checked&&pinned!==null,fs=Math.max(11,Math.round(cv.height/72));
+  ctx.font=`bold ${fs}px monospace`;ctx.textBaseline='middle';
+  for(const [id,x1,y1,x2,y2,code] of fr.p){
+    if(trackingData.team_info[id]===undefined)continue;
+    if(only&&id!==fr.c&&id!==pinned)continue;
+    if(lblFilter!=='all'&&String(code)!==lblFilter&&id!==pinned&&id!==fr.c)continue;
+    const label=(id===fr.c?'⚽ ':'')+nm(id),w=ctx.measureText(label).width+10,h=fs+8;
+    const base=id===fr.c?'#f59e0b':tcol(code),ty=Math.max(0,y1-h-6);
+    ctx.globalAlpha=(dim&&id!==pinned&&id!==fr.c)?.35:1;
+    ctx.fillStyle=base;ctx.fillRect(x1,ty,w,h);
+    const rgb=parseInt(base.slice(1),16),lum=((rgb>>16)&255)*.299+((rgb>>8)&255)*.587+(rgb&255)*.114;
+    ctx.fillStyle=lum>150?'#000':'#fff';ctx.fillText(label,x1+5,ty+h/2);
+  }
+  ctx.globalAlpha=1;
+}
+function renderAt(f){
+  lastF=f;
+  const cv=$('overlayCanvas'),ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  updatePoss(f);drawTimeline(f);
+  const fr=trackingData.frames[f];
+  if(!fr){setCarrier(-1);updateRoster(null);styleRows();return}
+  setCarrier(fr.c);updateRoster(fr);styleRows();
+  if(!trackingData.burned)drawGraphics(ctx,f,fr,cv);
+  drawPinned(ctx,f,fr,cv);
+  drawLabels(ctx,fr,cv);
+}
+</script>
+</body>
+</html>

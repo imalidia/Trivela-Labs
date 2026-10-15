@@ -1,0 +1,12 @@
+{
+  "name": "trivela-labs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Trivela Labs: football match analysis site (landing, dashboard, app) and the AI coach service.",
+  "scripts": {
+    "start": "npx --yes serve landing -l 5500",
+    "test": "node --test \"tests/*.test.*\"",
+    "coach:demo": "node scripts/coach-demo.mjs",
+    "coach:dev": "node coach/server.mjs --site"
+  }
+}

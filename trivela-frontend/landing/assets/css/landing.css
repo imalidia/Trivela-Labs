@@ -1,0 +1,480 @@
+
+/* Concept: one teal world. Deep logo-teal hero with a live tracking canvas, white sheet sliding over it, a dark-teal showcase, white stats, teal call to action. Pitch center-circle arcs repeat as the one decorative motif. */
+:root {
+  --teal:#015C55; --teal-700:#014B45; --teal-900:#012F2B; --teal-500:#0B8478;
+  --mint:#8FE8DA; --mint-soft:#D3F5EF; --paper:#F2F8F7; --white:#FFFFFF;
+  --ink:#06201D; --ink-2:#4A6663; --line:rgba(1,92,85,.14); --ball:#FFD60A;
+  --display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --ease-out:cubic-bezier(.23,1,.32,1); --ease-in-out:cubic-bezier(.77,0,.175,1); --ease:var(--ease-out);
+  --dy:18px; --pop:.94; /* entrance travel and start scale; flattened under reduced motion */
+}
+* { box-sizing:border-box }
+html { scroll-behavior:smooth; scroll-padding-top:110px }
+body { margin:0; background:#FFFFFF; color:var(--ink); font:17px/1.55 var(--body); -webkit-font-smoothing:antialiased; overflow-x:clip }
+a { color:inherit; text-decoration:none }
+button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; padding:0 }
+a:focus-visible, button:focus-visible { outline:3px solid var(--mint); outline-offset:3px; border-radius:12px }
+.wrap { max-width:1240px; margin:0 auto; padding-inline:24px }
+.num { font-variant-numeric:tabular-nums }
+
+/* Nav: one centered pill (logo badge + links), nothing on the sides. Sits at the top of the page and scrolls away with it; it does not follow you down */
+.nav { position:absolute; inset:0 0 auto 0; z-index:50; padding:calc(16px + env(safe-area-inset-top,0px)) 12px 0; display:flex; justify-content:center; pointer-events:none }
+.nav-in { pointer-events:auto; display:flex; align-items:center; gap:10px; padding:6px; background:#fff; border-radius:999px; border:1px solid rgba(1,92,85,.1); box-shadow:0 4px 0 rgba(1,47,43,.22), 0 14px 30px rgba(0,25,22,.18); animation:navIn .75s .1s cubic-bezier(.34,1.45,.64,1) both }
+/* The pill drops in with a small overshoot, the badge spins into place, then the links get a hover pill that glides between them */
+@keyframes navIn { from { opacity:0; transform:translateY(calc(var(--dy) * -1.4)) scale(.92) } }
+@keyframes badgeIn { from { rotate:-220deg; scale:.55 } }
+.logo .badge { animation:badgeIn .9s .25s var(--ease-out) backwards }
+.logo { display:flex; align-items:center; gap:12px; color:var(--teal); font:700 20px/1 var(--display); letter-spacing:-.025em; white-space:nowrap; padding-right:10px }
+/* Trivela curl: .kick carries the badge sideways (fast ease-out) while .badge lifts and spins on a slower curve, so the path bends like a swerving shot */
+.logo .kick { display:block; flex:none; transition:translate .32s var(--ease-out) }
+.logo .badge { width:50px; height:50px; border-radius:50%; overflow:hidden; background:var(--teal); display:block; transition:translate .32s var(--ease-in-out), rotate .32s var(--ease-out), scale .32s var(--ease-out) }
+.logo img { width:100%; height:100%; display:block; transform:scale(1.32) }
+.nav-links { position:relative; display:flex; align-items:center; gap:6px; font:600 16px/1 var(--display); letter-spacing:-.01em }
+.nav-links a { position:relative; z-index:1; color:var(--ink); padding:12px 12px; transition:color .2s, transform .12s var(--ease) }
+/* Hover pill: one mint shape that glides from link to link (placed by script, desktop pointers only) */
+.nav-hl { position:absolute; left:0; top:0; z-index:0; border-radius:999px; background:var(--mint-soft); opacity:0; pointer-events:none; transition:transform .38s var(--ease-out), width .38s var(--ease-out), height .38s var(--ease-out), opacity .2s }
+.nav-hl.fresh { transition:opacity .2s }
+.nav-links a:active { transform:scale(.95) }
+/* Dashboard: the one filled button in the pill, so it reads as the way into the app */
+.nav-cta { display:inline-flex; align-items:center; height:44px; padding:0 20px; margin-left:4px; border-radius:999px; background:var(--teal); color:#fff; font:600 16px/1 var(--display); letter-spacing:-.01em; white-space:nowrap; transition:background-color .2s, transform .12s var(--ease) }
+.nav-cta:active { transform:scale(.95) }
+/* Buttons */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:10px; height:52px; padding:0 26px; border-radius:999px; font-weight:600; font-size:16px;
+  transition:transform .14s var(--ease), box-shadow .25s, background .25s, color .25s; white-space:nowrap; user-select:none }
+.btn:active { transform:scale(.97) }
+.btn-white { background:#fff; color:var(--teal); box-shadow:0 10px 30px rgba(0,30,27,.25) }
+.btn-teal { background:var(--teal); color:#fff }
+.btn-sm { height:42px; padding:0 20px; font-size:15px }
+/* Hero pair: glossy pills. A vertical gradient, two dark pools in the bottom corners and a soft glow rising from the bottom center (the ::before layer, which swells on hover), inside a thin rim. Teal for the demo, white for How it works */
+.btn-glass { position:relative; isolation:isolate; overflow:hidden; padding:0 30px; border:1px solid var(--rim); font:600 17px/1 var(--display); letter-spacing:-.01em;
+  background:radial-gradient(ellipse 26% 62% at 20% 104%, var(--blob), transparent 72%), radial-gradient(ellipse 26% 62% at 80% 104%, var(--blob), transparent 72%), linear-gradient(180deg, var(--top), var(--bot));
+  box-shadow:var(--drop), inset 0 1px 0 var(--hi) }
+.btn-glass::before { content:""; position:absolute; z-index:-1; left:50%; bottom:-70%; width:62%; height:130%; translate:-50% 0; border-radius:50%; background:radial-gradient(closest-side, var(--glow), transparent); opacity:.85; transition:opacity .35s, scale .35s var(--ease-out) }
+.btn-teal-glass { --top:#0B8478; --bot:#015C55; --blob:rgba(1,47,43,.85); --glow:rgba(120,235,215,.8); --rim:rgba(143,232,218,.55); --hi:rgba(255,255,255,.28); --drop:0 12px 30px rgba(0,25,22,.4); color:#fff }
+.btn-white-glass { --top:#FFFFFF; --bot:#DDF3EE; --blob:rgba(11,132,120,.28); --glow:rgba(11,132,120,.55); --rim:rgba(255,255,255,.95); --hi:#fff; --drop:0 12px 30px rgba(0,25,22,.3); color:var(--teal) }
+.hero .btn-glass { height:52px }
+.arrow { transition:transform .25s var(--ease) }
+/* Hover only where a real pointer exists; touch fires false hovers on tap */
+@media (hover:hover) and (pointer:fine) {
+  .logo:hover .kick { translate:6px 0 }
+  .logo:hover .badge { translate:0 -5px; rotate:18deg; scale:1.05 }
+  .nav-links a:hover { color:var(--teal) }
+  .nav-cta:hover { background:var(--teal-700) }
+  .btn-white:hover { box-shadow:0 14px 38px rgba(0,30,27,.35) }
+  .btn-glass:hover::before { opacity:1; scale:1.2 1.1 }
+  .btn-glass:hover { box-shadow:0 16px 38px rgba(0,25,22,.46), inset 0 1px 0 var(--hi) }
+  .btn-teal:hover { background:var(--teal-700) }
+  .btn:hover .arrow { transform:translateX(4px) }
+  .step:hover { transform:translateY(-6px); box-shadow:0 30px 60px rgba(1,92,85,.14) }
+  .group:hover { background:var(--paper); transform:translateY(-4px); border-color:transparent }
+}
+
+/* Hero */
+.hero { position:relative; z-index:3; color:#fff; min-height:100vh; min-height:100svh; display:flex; flex-direction:column }
+.hero-bg { position:absolute; inset:0; background:var(--teal) }
+.hero-in { position:relative; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding-top:calc(84px + env(safe-area-inset-top,0px) + clamp(8px,3vh,36px)); padding-bottom:clamp(20px,4vh,40px) }
+.hero-copy { max-width:1200px }
+h1 { margin:0; font:700 clamp(2.4rem,min(6.8vw,8.6vh),5.4rem)/1.02 var(--display); letter-spacing:-.035em; text-wrap:balance }
+h1 .pos { position:relative; display:inline-block; color:var(--mint) }
+/* "differently." crossfades through 14 typefaces once, then lands on the brand face.
+   .sz is an invisible copy of the landing word and is the only thing that takes layout space, so "See the game" can never move.
+   The animated word floats over it (.pfw); JS matches every face's x-height to the brand face (font-size-adjust),
+   shrinks any face that would still overhang the slot, and pins each one to the slot's baseline. */
+.sz { color:transparent }
+.pfw { position:absolute; left:0; top:0; white-space:nowrap }
+.pf { position:relative; line-height:0 }
+h1 .pos svg { position:absolute; left:-2%; bottom:-.2em; width:104%; height:.34em; overflow:visible }
+h1 .pos path { stroke-dasharray:300; stroke-dashoffset:0; animation:draw 1.1s .6s var(--ease) both }
+@keyframes draw { from { stroke-dashoffset:300 } }
+.lede { margin:clamp(10px,1.8vh,18px) auto 0; max-width:44em; font-size:clamp(1.05rem,min(2.1vw,2.8vh),1.55rem); font-weight:500; line-height:1.35; letter-spacing:-.01em; color:#fff; text-wrap:balance }
+.cta-row { display:flex; gap:14px; flex-wrap:wrap; margin-top:36px }
+.hero .cta-row { justify-content:center; margin-top:clamp(18px,3.4vh,32px) }
+.hero .btn { height:48px }
+/* Headline lands word by word (60ms stagger), then the lede and buttons follow */
+.w { display:inline-block; animation:rise .7s calc(.15s + var(--i,0) * 60ms) var(--ease-out) both }
+.hero-copy > :not(h1) { animation:rise .7s var(--ease-out) both }
+.hero-copy > :nth-child(2) { animation-delay:.42s } .hero-copy > :nth-child(3) { animation-delay:.5s }
+@keyframes rise { from { opacity:0; transform:translateY(var(--dy)) } }
+
+.vis { position:relative; width:min(1080px,100%,max(340px,calc((100vh - 385px) * 1.544)),max(340px,calc((100svh - 385px) * 1.544))); margin-top:clamp(28px,5vh,48px); transform-style:preserve-3d; transform:perspective(1600px) rotateX(var(--rx,6deg)) rotateY(var(--ry,0deg)) scale(var(--sc,.97)); transition:transform .25s ease-out; animation:rise .8s .3s var(--ease-out) both }
+.vis-card { border-radius:28px; overflow:hidden; box-shadow:0 30px 70px rgba(0,25,22,.28) }
+.vis canvas { display:block; width:100%; height:auto; aspect-ratio:105/68 }
+/* Chips pop in after the card has settled (opacity on .vis flattens its 3D until then) */
+.chip { position:absolute; background:#fff; color:var(--ink); border-radius:18px; padding:13px 17px; box-shadow:0 22px 46px rgba(0,25,22,.34); transform:translateZ(60px); min-width:132px; animation:chipIn .5s calc(1.1s + var(--i,0) * 90ms) var(--ease-out) both }
+@keyframes chipIn { from { opacity:0; transform:translateZ(60px) translateY(var(--dy)) scale(var(--pop)) } }
+.chip small { display:block; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2) }
+.chip b { display:block; font:700 28px/1.1 var(--display); letter-spacing:-.025em; color:var(--teal); margin-top:3px }
+.chip .meter { height:5px; border-radius:5px; background:var(--mint-soft); margin-top:8px; overflow:hidden }
+.chip .meter i { display:block; height:100%; background:var(--teal); border-radius:5px; transition:width .6s var(--ease) }
+.chip.c1 { left:-34px; top:11%; --i:0 }
+.chip.c2 { right:-26px; top:-24px; --i:1 }
+.chip.c3 { right:7%; bottom:-18px; --i:2 }
+/* Wide screens have empty margins: park the chips beside the pitch instead of on top of its edges */
+@media (min-width:1560px) {
+  .chip.c1 { left:auto; right:calc(100% + 28px); top:30% }
+  .chip.c2 { right:auto; left:calc(100% + 28px); top:10% }
+  .chip.c3 { right:auto; left:calc(100% + 28px); bottom:12% }
+}
+
+/* White sheet */
+.sheet { position:relative; z-index:2; background:#fff; padding-block:112px 40px }
+.sheet > .wrap { position:relative }
+.kicker { font-size:13px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--teal-500) }
+h2 { margin:14px 0 0; font:800 clamp(2.3rem,4.8vw,4rem)/1 var(--display); letter-spacing:-.035em; text-wrap:balance }
+.sec-head { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:48px; align-items:end; margin-bottom:56px }
+.sec-head p { margin:0; color:var(--ink-2); font-size:18px }
+.steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px }
+.step { background:var(--paper); border-radius:30px; padding:14px 14px 30px; display:flex; flex-direction:column; gap:22px; transition:transform .25s var(--ease-out), box-shadow .25s var(--ease-out) }
+.step svg { display:block; width:100%; height:auto; border-radius:22px }
+.step svg text { font-variant-numeric:tabular-nums }
+.step.in .zone { animation:march 1.4s linear infinite }
+@keyframes march { to { stroke-dashoffset:-14 } }
+.step .txt { padding-inline:14px }
+.step .tag { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--teal); letter-spacing:.04em }
+.step .tag i { width:26px; height:26px; border-radius:50%; background:var(--teal); color:#fff; display:grid; place-items:center; font-style:normal; font-size:13px }
+.step h3 { margin:14px 0 8px; font:700 26px/1.1 var(--display); letter-spacing:-.025em }
+.step p { margin:0; color:var(--ink-2) }
+
+/* Football cities: dotted map of Europe on a teal card; routes draw city to city in turn, then wipe and replay */
+.cities { position:relative; z-index:2; background:#fff; padding-block:112px 8px }
+/* Width is capped by screen height (map is 105:77, padding up to 22px a side) so the whole card fits on one screen */
+.map-card { width:min(100%, max(520px, calc((100vh - 84px) * 1.9444 + 44px))); width:min(100%, max(520px, calc((100svh - 84px) * 1.9444 + 44px))); margin-inline:auto; background:var(--teal); border-radius:32px; padding:clamp(10px,2vw,22px); box-shadow:0 40px 80px rgba(1,47,43,.2); overflow:hidden }
+/* Big screens: the card may grow a little past the page column (cap 1320px), still centered and still limited by screen height */
+@media (min-width:1300px) { .map-card { position:relative; left:50%; translate:-50% 0; margin-inline:0; width:min(1320px, calc(100vw - 80px), max(520px, calc((100vh - 84px) * 1.9444 + 44px))); width:min(1320px, calc(100vw - 80px), max(520px, calc((100svh - 84px) * 1.9444 + 44px))) } }
+.map { position:relative; aspect-ratio:105/54; container-type:inline-size }
+.map svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible }
+#mapDots { -webkit-mask-image:linear-gradient(to bottom,transparent,#000 8%,#000 92%,transparent); mask-image:linear-gradient(to bottom,transparent,#000 8%,#000 92%,transparent) }
+.route { fill:none; stroke:url(#routeGrad); stroke-width:.17; stroke-linecap:round; stroke-dasharray:1 1; stroke-dashoffset:1; transition:stroke-width .25s var(--ease-out) }
+.route.hot { stroke-width:.32 }
+.comet { fill:#fff; opacity:0 }
+.pin { cursor:pointer }
+.pin .core, .pin .ring { fill:#fff; transform-box:fill-box; transform-origin:center }
+.pin .core { transition:transform .35s cubic-bezier(.34,1.56,.64,1) }
+.pin .ring { opacity:0; animation:ring 2s var(--d,0s) ease-out infinite }
+.pin .hit { fill:transparent }
+.pin.on .core { transform:scale(1.5) }
+@keyframes ring { from { opacity:.6; transform:scale(1) } to { opacity:0; transform:scale(4) } }
+.map-labels { position:absolute; inset:0; pointer-events:none }
+/* Labels scale with the map (container width), so neighbours never collide at mid widths. The map is 1.94:1, wide and short, so it fills a widescreen */
+.map-label { position:absolute; left:calc(var(--x) * 1%); top:calc(var(--y) * 1%); padding:.46em .85em; border-radius:999px; background:#fff; color:var(--teal); font:600 clamp(10px,.9cqw,13px)/1 var(--body); white-space:nowrap; box-shadow:0 8px 18px rgba(0,25,22,.28);
+  opacity:0; transform:translateY(calc(var(--dy) * .4)); transition:opacity .45s calc(.35s + var(--i) * 55ms) var(--ease-out), transform .45s calc(.35s + var(--i) * 55ms) var(--ease-out), background-color .2s, color .2s }
+.map-label.t { translate:-50% calc(-100% - 1em) } .map-label.b { translate:-50% 1em }
+.map-label.l { translate:calc(-100% - 1em) -50% } .map-label.r { translate:1em -50% }
+.map-card.in .map-label { opacity:1; transform:none }
+.map-card.in .map-label.on { background:var(--teal-900); color:#fff; transition-delay:0s }
+/* Mid-size screens: only the big-name cities keep a label, so nothing overlaps; every city still has its pin */
+@container (max-width:1100px) { .map-label.minor { display:none } }
+.map-tip { position:absolute; left:10px; bottom:10px; display:none; padding:8px 12px; border-radius:12px; background:#fff; color:var(--teal); font-size:14px; font-weight:600; box-shadow:0 8px 18px rgba(0,25,22,.28) }
+
+/* Vision model: one big glass "app window" showing a real model frame. Four capabilities below it drive what the window highlights.
+   The window eases up to full size as it scrolls in and leans gently toward the pointer (smoothed every frame, so it can be redirected mid-motion). */
+.vision { position:relative; overflow:hidden; color:#fff; padding-block:128px 120px; background:var(--teal) }
+.vision .kicker { color:var(--mint) }
+.vhead { text-align:center; max-width:840px; margin:0 auto }
+.vhead h2 { font-size:clamp(2.4rem,5.4vw,4.6rem); line-height:1.02; letter-spacing:-.045em }
+/* "Advanced" glitches hard in bursts: the word itself stutters and skews with a mint/dark split, and mint and dark-teal slice copies tear across it, then it rests clean.
+   First burst lands just after the heading rises in, then every 2.6s (~470ms each). Copies are absolutely positioned, so the word keeps its normal space; the alt-text content keeps them out of the accessible name. */
+.glitch { position:relative; display:inline-block }
+.glitch::before, .glitch::after { content:attr(data-text); content:attr(data-text) / ""; position:absolute; left:0; top:0; white-space:nowrap; pointer-events:none; opacity:0 }
+.glitch::before { color:var(--mint); text-shadow:0 0 .35em rgba(143,232,218,.8) }
+.glitch::after { color:var(--teal-900) }
+.vhead.in .glitch { animation:glitchW 2.6s .5s steps(1,end) infinite }
+.vhead.in .glitch::before { animation:glitchA 2.6s .5s steps(1,end) infinite }
+.vhead.in .glitch::after { animation:glitchB 2.6s .5s steps(1,end) infinite }
+@keyframes glitchW {
+  0% { transform:translate(.03em,0) skewX(-14deg); text-shadow:-.06em 0 var(--mint), .06em 0 var(--teal-900) } 3% { transform:translate(-.04em,0) skewX(10deg); opacity:.55 }
+  6% { transform:translate(.02em,.01em) skewX(-6deg); opacity:1; text-shadow:.07em 0 var(--mint), -.07em 0 var(--teal-900) } 9% { transform:translate(-.05em,0) skewX(16deg); opacity:.7 }
+  12% { transform:translate(.04em,0) skewX(-10deg); opacity:1; text-shadow:-.05em 0 var(--mint), .05em 0 var(--teal-900) } 15% { transform:translate(-.02em,0) skewX(5deg) } 18%, 100% { transform:none; opacity:1; text-shadow:none }
+}
+@keyframes glitchA {
+  0% { opacity:1; transform:translate(-.16em,0); clip-path:inset(10% 0 66% 0) } 2% { transform:translate(.12em,.02em); clip-path:inset(56% 0 20% 0) }
+  4% { transform:translate(-.1em,0); clip-path:inset(28% 0 44% 0) } 6% { transform:translate(.18em,-.02em); clip-path:inset(72% 0 6% 0) }
+  8% { transform:translate(-.07em,0); clip-path:inset(2% 0 82% 0) } 10% { transform:translate(.1em,.02em); clip-path:inset(44% 0 36% 0) }
+  12% { transform:translate(-.15em,0); clip-path:inset(18% 0 58% 0) } 14% { transform:translate(.08em,0); clip-path:inset(64% 0 14% 0) }
+  16% { transform:translate(-.05em,0); clip-path:inset(36% 0 50% 0) } 17.5%, 100% { opacity:0; transform:none; clip-path:inset(0 0 100% 0) }
+}
+@keyframes glitchB {
+  0% { opacity:1; transform:translate(.14em,0); clip-path:inset(60% 0 16% 0) } 2% { transform:translate(-.12em,0); clip-path:inset(18% 0 58% 0) }
+  4% { transform:translate(.17em,.02em); clip-path:inset(78% 0 2% 0) } 6% { transform:translate(-.14em,0); clip-path:inset(36% 0 40% 0) }
+  8% { transform:translate(.08em,0); clip-path:inset(6% 0 70% 0) } 10% { transform:translate(-.09em,-.02em); clip-path:inset(52% 0 26% 0) }
+  12% { transform:translate(.13em,0); clip-path:inset(70% 0 8% 0) } 14% { transform:translate(-.1em,0); clip-path:inset(22% 0 54% 0) }
+  16% { transform:translate(.06em,0); clip-path:inset(46% 0 34% 0) } 17.5%, 100% { opacity:0; transform:none; clip-path:inset(0 0 100% 0) }
+}
+.vlede { margin:22px auto 0; max-width:34em; font-size:clamp(1.05rem,1.6vw,1.25rem); line-height:1.5; color:rgba(255,255,255,.8); text-wrap:balance }
+.vstage { margin:64px auto 0; width:70%; perspective:1600px }
+@media (max-width:980px) { .vstage { width:100% } }
+.vwin { --mx:50%; --my:40%; position:relative; border-radius:28px; overflow:hidden; background:rgba(255,255,255,.06); transform-origin:50% 30%; will-change:transform;
+  box-shadow:0 60px 120px rgba(0,10,9,.55), 0 0 0 1px rgba(255,255,255,.14), inset 0 1px 0 rgba(255,255,255,.2) }
+.vshot { position:relative; overflow:hidden }
+.vshot img { display:block; width:100%; height:auto }
+.vsvg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible }
+.vg { opacity:0; transition:opacity .5s var(--ease-out) } .vg.on { opacity:1 }
+.vring { transform-box:fill-box; transform-origin:center; animation:ring 1.8s ease-out infinite }
+.vtrail { stroke-dasharray:7 9; animation:march 1.1s linear infinite }
+.vshot .after { position:absolute; inset:0; width:100%; height:100%; clip-path:inset(0 100% 0 0) }
+.vshot.sweep .after { animation:vreveal 1.9s .15s linear both }
+@keyframes vreveal { 0%, 5% { clip-path:inset(0 100% 0 0) } 85%, 100% { clip-path:inset(0 0 0 0) } }
+.vshot.sweep .scan { animation:vsweep 1.9s .15s linear both }
+@keyframes vsweep { 0% { opacity:0; transform:translateX(-100%) } 5% { opacity:1 } 85% { opacity:1; transform:translateX(0) } 100% { opacity:0; transform:translateX(0) } }
+.vshot.sweep .vl.on, .vshot.sweep .vg.on { transition-delay:1.9s }
+.vtag { opacity:0; transition:opacity 0s .5s } .vg.on .vtag { opacity:1; transition:opacity .35s calc(2s + var(--i,0) * 60ms) }
+@media (prefers-reduced-motion:reduce) { .vshot .after { clip-path:none } }
+.vl { position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity .45s var(--ease-out) } .vl.on { opacity:1 }
+.vcall, .vchip { display:inline-flex; align-items:center; gap:8px; padding:8px 13px; border-radius:999px; background:rgba(1,47,43,.72); -webkit-backdrop-filter:blur(14px) saturate(160%); backdrop-filter:blur(14px) saturate(160%);
+  color:#fff; font-size:13px; font-weight:600; white-space:nowrap; box-shadow:0 10px 30px rgba(0,15,13,.35), inset 0 1px 0 rgba(255,255,255,.18);
+  transform:translateY(10px) scale(.94); transition:transform .7s cubic-bezier(.22,1,.36,1) calc(var(--d,0) * 90ms) }
+.vcall { position:absolute }
+.vcall b, .vchip b { color:var(--mint); font-weight:700 }
+.vl.on .vcall, .vl.on .vchip { transform:none }
+.vchips { position:absolute; left:16px; top:16px; display:flex; flex-wrap:wrap; gap:8px }
+.vmap { position:absolute; right:16px; bottom:16px; width:min(34%,300px); padding:10px 10px 9px; border-radius:18px; background:rgba(1,47,43,.74); -webkit-backdrop-filter:blur(16px) saturate(160%); backdrop-filter:blur(16px) saturate(160%);
+  box-shadow:0 16px 40px rgba(0,15,13,.4), inset 0 1px 0 rgba(255,255,255,.18); transform:translateY(14px) scale(.94); transform-origin:100% 100%; transition:transform .7s cubic-bezier(.22,1,.36,1) }
+.vl.on .vmap { transform:none }
+.vmap svg { display:block; width:100%; height:auto }
+.vmap small { display:block; margin-top:7px; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.75) }
+.vmap .dot { opacity:0; transform:translateY(-6px); transform-box:fill-box; transform-origin:center; transition:opacity .35s, transform .55s cubic-bezier(.34,1.56,.64,1) }
+.vl.on .vmap .dot { opacity:1; transform:none; transition-delay:calc(.15s + var(--i) * 45ms) }
+.scan { position:absolute; inset:0; pointer-events:none; opacity:0; transform:translateX(-100%); background:linear-gradient(90deg, rgba(143,232,218,0) 70%, rgba(143,232,218,.22)); border-right:2px solid var(--mint) }
+@keyframes scan { 0% { opacity:0; transform:translateX(-100%) } 8% { opacity:1 } 62% { opacity:1; transform:translateX(0) } 72%, 100% { opacity:0; transform:translateX(0) } }
+.vspot { position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity .4s; background:radial-gradient(460px circle at var(--mx) var(--my), rgba(143,232,218,.16), transparent 62%) }
+.vtabs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:26px auto 0; width:70% }
+@media (max-width:980px) { .vtabs { width:100% } }
+.vtab { position:relative; overflow:hidden; text-align:left; padding:18px 18px 24px; border-radius:20px; background:#fff; border:1px solid rgba(255,255,255,.95); color:rgba(1,47,43,.55);
+  transition:background-color .3s, color .3s, border-color .3s, transform .12s var(--ease-out) }
+.vtab:active { transform:scale(.97) }
+.vtab b { display:block; font:700 18px/1.15 var(--display); letter-spacing:-.02em }
+.vtab span { display:block; margin-top:6px; font-size:14px; line-height:1.45 }
+.vtab[aria-selected="true"] { background:#fff; border-color:#fff; color:var(--ink); box-shadow:0 14px 34px rgba(0,25,22,.3) }
+.vtab i { position:absolute; left:18px; right:18px; bottom:11px; height:2px; border-radius:2px; background:rgba(1,92,85,.14); overflow:hidden }
+.vtab i::after { content:""; position:absolute; inset:0; background:var(--teal); transform-origin:left; transform:scaleX(var(--p,0)) }
+@media (hover:hover) and (pointer:fine) {
+  .vtab:hover { color:var(--ink); background:#fff }
+  .vwin:hover .vspot { opacity:1 }
+}
+
+/* Stats */
+.stats { padding-block:124px 40px }
+.stats-top { display:flex; align-items:flex-end; gap:40px; flex-wrap:wrap; margin-bottom:56px }
+.big20 .plus { position:relative; display:inline-block; width:.3em; height:.3em; margin-left:.16em; vertical-align:top; margin-top:.06em; letter-spacing:0 }
+.big20 .plus::before, .big20 .plus::after { content:""; position:absolute; border-radius:999px; background:var(--teal) }
+.big20 .plus::before { left:0; right:0; top:50%; height:.075em; translate:0 -50% }
+.big20 .plus::after { top:0; bottom:0; left:50%; width:.075em; translate:-50% 0 }
+.big20 { font:800 clamp(7rem,18vw,15rem)/.8 var(--display); letter-spacing:-.06em; color:transparent; -webkit-text-stroke:2.5px var(--teal); }
+.stats-top p { margin:0; max-width:24em; color:var(--ink-2); font-size:18px; padding-bottom:10px }
+.groups { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:14px }
+.group { border:1px solid var(--line); border-radius:24px; padding:22px 20px 24px; background:#fff; transition:background-color .2s ease, transform .25s var(--ease-out), border-color .2s ease }
+.group h4 { margin:0 0 14px; font:700 19px/1 var(--display); letter-spacing:-.02em; color:var(--teal) }
+.group ul { list-style:none; margin:0; padding:0; display:grid; gap:9px; font-size:15px }
+.group li { display:flex; gap:9px; align-items:flex-start }
+.group li::before { content:""; flex:none; width:8px; height:8px; margin-top:8px; border-radius:50%; background:var(--teal-500) }
+
+/* AI coach */
+.coach { padding:72px 0 112px }
+.coach-card { position:relative; overflow:hidden; isolation:isolate; display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr); gap:56px; align-items:center;
+  border-radius:44px; color:#fff; padding:80px 56px; background:var(--teal) }
+.coach-card::before { content:""; position:absolute; z-index:-1; right:-12%; top:-30%; width:70%; aspect-ratio:1; border-radius:50%;
+  background:radial-gradient(closest-side, rgba(143,232,218,.22), transparent) }
+.coach-card .kicker { color:var(--mint) }
+.coach-card h2 { margin-top:12px; max-width:11em }
+.coach-lede { margin:20px 0 0; max-width:31em; color:rgba(255,255,255,.85); font-size:19px }
+.coach-points { list-style:none; margin:28px 0 0; padding:0; display:grid; gap:14px; max-width:34em }
+.coach-points li { position:relative; padding-left:34px; color:rgba(255,255,255,.78); font-size:16px }
+.coach-points li::before { content:""; position:absolute; left:0; top:2px; width:22px; height:22px; border-radius:50%; background:rgba(143,232,218,.16) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238FE8DA' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center/13px no-repeat }
+.coach-points b { color:#fff; font-weight:600 }
+.coach-badges { display:flex; flex-wrap:wrap; gap:10px; margin-top:28px }
+.cbadge { display:inline-flex; align-items:center; gap:8px; padding:9px 15px 9px 12px; border-radius:999px; background:#fff; color:var(--teal);
+  font:700 13px/1 var(--display); letter-spacing:.01em; box-shadow:0 8px 20px rgba(0,25,22,.22) }
+.cbadge svg { flex:none; display:block }
+.coach-card .cta-row { margin-top:30px }
+
+.coach-chat { position:relative; min-width:0; border-radius:28px; background:#F7FCFB; color:var(--ink); padding:18px; box-shadow:0 40px 80px rgba(0,25,22,.38), 0 0 0 1px rgba(255,255,255,.6) inset;
+  rotate:1.5deg; transition:rotate .5s var(--ease-out) }
+.cc-head > span:nth-child(2) { min-width:0 }
+.cc-head { display:flex; align-items:center; gap:12px; padding:4px 4px 16px; border-bottom:1px solid var(--line) }
+.cc-head b { display:block; font:700 16px/1.2 var(--display); letter-spacing:-.01em; color:var(--teal-900) }
+.cc-head small { display:block; font-size:12.5px; color:var(--ink-2) }
+.cc-av { flex:none; width:40px; height:40px; border-radius:13px; display:grid; place-items:center; color:var(--mint); background:var(--teal-900) }
+.cc-body { display:flex; flex-direction:column; gap:10px; padding:16px 2px; min-height:300px }
+.cc-msg { max-width:86%; padding:11px 15px; border-radius:18px; font-size:15px; line-height:1.45 }
+.cc-msg.me { align-self:flex-end; background:var(--teal); color:#fff; border-bottom-right-radius:6px }
+.cc-msg.ai { align-self:flex-start; background:#fff; border:1px solid var(--line); border-bottom-left-radius:6px }
+.cc-msg.ai b { color:var(--teal); font-weight:700 }
+.cc-typing { align-self:flex-start; display:flex; gap:4px; padding:12px 14px; border-radius:16px; background:#fff; border:1px solid var(--line) }
+.cc-typing i { width:6px; height:6px; border-radius:50%; background:var(--teal-500); animation:ccDot 1.2s ease-in-out infinite }
+.cc-typing i:nth-child(2) { animation-delay:.15s } .cc-typing i:nth-child(3) { animation-delay:.3s }
+.cc-input { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 8px 8px 16px; border-radius:999px; background:#fff; border:1px solid var(--line); color:var(--ink-2); font-size:14px }
+.cc-input i { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; background:var(--teal); color:#fff }
+/* the chat plays out once the card scrolls in */
+.coach-card .cc-msg, .coach-card .cc-typing { opacity:0; translate:0 10px }
+.coach-card.in .cc-msg, .coach-card.in .cc-typing { animation:ccIn .45s calc(.35s + var(--d) * .7s) var(--ease-out) forwards }
+@keyframes ccIn { to { opacity:1; translate:0 0 } }
+@keyframes ccDot { 0%, 60%, 100% { opacity:.3; transform:translateY(0) } 30% { opacity:1; transform:translateY(-3px) } }
+@media (hover:hover) { .coach-card:hover .coach-chat { rotate:0deg } }
+@media (max-width:960px) { .coach-card { grid-template-columns:1fr; gap:44px } .coach-chat { rotate:0deg } }
+@media (prefers-reduced-motion:reduce) { .coach-card .cc-msg, .coach-card .cc-typing { opacity:1; translate:none; animation:none !important } .cc-typing i { animation:none } .coach-chat { transition:none } }
+
+/* Live demo: the sample report, right on the page. A paper card with the scoreline, a dark pitch that switches between heatmap, shot map and pass network, and the team comparison beside it. Same sample match the app opens */
+.demo { --home:#015C55; --away:#E07A3F; padding-block:124px 40px }
+.rep { display:grid; gap:24px; padding:28px; border-radius:36px; background:var(--paper); border:1px solid var(--line) }
+.rep-head { display:flex; align-items:center; justify-content:space-between; gap:14px 24px; flex-wrap:wrap }
+.rep-score { display:flex; align-items:center; gap:12px; font:700 20px/1.1 var(--display); letter-spacing:-.02em }
+.rep-score .big { flex:none; white-space:nowrap; padding-inline:8px; font:800 42px/1 var(--display); letter-spacing:-.04em; color:var(--teal-900) }
+.crest { flex:none; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; color:#fff; font:700 12px/1 var(--display); letter-spacing:.02em }
+.crest.h { background:var(--home) } .crest.a { background:var(--away) }
+.rep-meta { display:flex; align-items:center; gap:10px; color:var(--ink-2); font-size:14px; font-weight:500 }
+.rep-meta i { width:8px; height:8px; border-radius:50%; background:#248A3D; box-shadow:0 0 0 4px rgba(36,138,61,.15) }
+.rep-body { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:24px; align-items:start }
+.rep-ctrl { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:14px }
+/* Segmented controls: one teal thumb slides under the selected option (placed by script) */
+.seg { position:relative; display:inline-flex; padding:4px; border-radius:999px; background:#fff; border:1px solid var(--line) }
+.seg button { position:relative; z-index:1; display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 15px; border-radius:999px; font:600 14px/1 var(--body); color:var(--ink-2); white-space:nowrap; transition:color .2s, transform .12s var(--ease) }
+.seg button:active { transform:scale(.96) }
+.seg [aria-selected="true"], .seg [aria-pressed="true"] { color:#fff }
+.seg button i { width:8px; height:8px; border-radius:50%; background:var(--c) }
+.seg [aria-pressed="true"] i { box-shadow:0 0 0 1.5px #fff }
+.seg .thumb { position:absolute; left:0; top:4px; height:36px; border-radius:999px; background:var(--teal); box-shadow:0 2px 8px rgba(1,47,43,.25); opacity:0 }
+.seg.ready .thumb { opacity:1; transition:transform .38s var(--ease-out), width .38s var(--ease-out) }
+.rep-pitch { border-radius:22px; overflow:hidden; background:#012F2B; aspect-ratio:105/68; box-shadow:0 18px 40px rgba(1,47,43,.18) }
+.rep-pitch svg { display:block; width:100%; height:100% }
+.rep-legend { display:flex; flex-wrap:wrap; gap:6px 18px; min-height:20px; margin-top:12px; color:var(--ink-2); font-size:13px }
+.rep-legend span { display:inline-flex; align-items:center; gap:7px }
+.rep-legend i { width:10px; height:10px; border-radius:50% }
+/* Pitch layers enter on every redraw: heat fades up, shots and players pop in, pass lines draw themselves */
+.rep-pitch .heat { animation:repFade .7s var(--ease-out) backwards }
+.rep-pitch .pop { transform-box:fill-box; transform-origin:center; animation:repPop .45s calc(var(--d,0) * 1ms) var(--ease-out) backwards }
+.rep-pitch .edge { animation:repDraw .6s calc(var(--d,0) * 1ms) var(--ease-out) backwards }
+.rep-pitch .ring { transform-box:fill-box; transform-origin:center; animation:repRing 1.6s var(--ease-out) infinite }
+@keyframes repFade { from { opacity:0 } }
+@keyframes repPop { from { opacity:0; transform:scale(.2) } }
+@keyframes repDraw { from { stroke-dashoffset:1 } }
+@keyframes repRing { 0% { opacity:1; transform:scale(.6) } 100% { opacity:0; transform:scale(1.8) } }
+.rep-side { display:grid; gap:14px }
+.rep-card { padding:20px; border-radius:22px; background:#fff; border:1px solid var(--line) }
+.rep-card h3 { margin:0 0 16px; font:700 17px/1 var(--display); letter-spacing:-.02em; color:var(--teal-900) }
+.cmp { display:grid; gap:13px; margin:0; padding:0; list-style:none }
+.cmp li { display:grid; grid-template-columns:auto 1fr auto; gap:6px 10px; align-items:baseline; font-size:14px }
+.cmp b { font-weight:600; font-variant-numeric:tabular-nums } .cmp b:last-of-type { text-align:right }
+.cmp span { text-align:center; color:var(--ink-2) }
+.cmp .bar { grid-column:1/-1; display:flex; gap:3px; height:6px }
+.cmp .bar i { flex:var(--f) 1 0; border-radius:999px; background:var(--home); transition:flex-grow 1s var(--ease-out) }
+.cmp .bar i + i { background:var(--away) }
+.js .rep:not(.in) .cmp .bar i { flex-grow:1 }
+.moms { display:grid; gap:2px }
+.mom { display:grid; grid-template-columns:34px 22px 1fr 16px; gap:10px; align-items:center; width:100%; padding:10px 8px; border-radius:12px; text-align:left; font-size:14px; transition:background-color .15s, transform .12s var(--ease) }
+.mom:active { transform:scale(.98) }
+.mom[aria-pressed="true"] { background:var(--mint-soft) }
+.mom .t { color:var(--ink-2); font-variant-numeric:tabular-nums }
+.mom .ico { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; background:var(--c); color:#fff; font:700 11px/1 var(--display) }
+.mom small { color:var(--ink-2); font-size:13px }
+.mom svg { color:var(--teal); transition:transform .2s var(--ease-out) }
+.rep-foot { display:flex; align-items:center; justify-content:space-between; gap:14px 24px; flex-wrap:wrap; padding-top:22px; border-top:1px solid var(--line) }
+.rep-foot p { margin:0; color:var(--ink-2); font-size:15px }
+.rep-foot div { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.textlink { display:inline-flex; align-items:center; gap:6px; padding:12px 10px; color:var(--teal); font-weight:600; font-size:15px }
+.textlink svg { transition:transform .2s var(--ease-out) }
+@media (hover:hover) and (pointer:fine) {
+  .seg button:hover:not([aria-selected="true"]):not([aria-pressed="true"]) { color:var(--teal-900) }
+  .mom:hover { background:var(--mint-soft) } .mom:hover svg, .textlink:hover svg { transform:translateX(3px) }
+}
+@media (max-width:980px) {
+  .demo { padding-block:88px 32px } .rep-body { grid-template-columns:1fr }
+  .rep { padding:16px; gap:18px; border-radius:28px } .rep-pitch { border-radius:16px }
+}
+@media (max-width:520px) {
+  .rep-score { gap:8px; font-size:15px } .rep-score .big { padding-inline:2px; font-size:30px } .rep-score .tn { max-width:6em }
+  .crest { width:30px; height:30px; font-size:10px }
+  .rep-ctrl .seg { width:100% } .seg button { flex:1; justify-content:center; padding:0 8px; font-size:13px }
+  .rep-foot div { width:100% } .rep-foot .btn { flex:1 }
+}
+@media (prefers-reduced-motion:reduce) { .rep-pitch .ring { animation:none !important } .seg.ready .thumb, .cmp .bar i { transition:none } }
+
+/* Scroll reveals: sections rise in once, staggered by --i. Hidden only while JS is running, so no-JS visitors see everything. */
+.js [data-reveal]:not(.in) { opacity:0 }
+.js [data-reveal].in { animation:rise .6s calc(var(--i,0) * 70ms) var(--ease-out) backwards }
+
+/* "How it works" illustrations play once when their card reveals: upload bar fills, tracking marks pop, stat bars grow */
+.step svg .grow, .step svg .pop { transform-box:fill-box; transform-origin:left center }
+.step svg .pop { transform-origin:center }
+.js .step:not(.in) .grow { transform:scaleX(0) }
+.js .step:not(.in) .pop { opacity:0 }
+.step.in .grow { animation:grow .9s calc(.3s + var(--i,0) * .1s) var(--ease-out) backwards }
+.step.in .pop { animation:pop .5s calc(.4s + var(--i,0) * .12s) var(--ease-out) backwards }
+@keyframes grow { from { transform:scaleX(0) } }
+@keyframes pop { from { opacity:0; transform:scale(var(--pop)) } }
+
+@media (max-width:980px) {
+  .hero-in, .sec-head { grid-template-columns:1fr }
+  .vis { transform:none !important }
+  .chip.c1 { left:10px; top:auto; bottom:10px } .chip.c2 { right:10px; top:auto; bottom:10px } .chip.c3 { display:none }
+  .chip { padding:9px 13px; min-width:0 } .chip b { font-size:22px }
+  .steps { grid-template-columns:1fr }
+  .groups { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .sheet { padding-top:88px } .show, .stats { padding-block:88px 32px } .vision { padding-block:88px } .vstage { margin-top:44px } .vtabs { grid-template-columns:repeat(2,minmax(0,1fr)) } .vwin { border-radius:22px }
+  .logo .wordmark { display:none } .logo { padding-right:0 } .logo .badge { width:44px; height:44px }
+  .nav-in { padding:5px 5px 5px 5px; gap:4px } .nav-links { font-size:14px; gap:0 } .nav-links a { padding:10px 9px } .nav-links a:nth-child(2) { display:none }
+  .nav-cta { height:40px; padding:0 16px; font-size:14px; margin-left:2px }
+  .coach-card { padding:56px 20px 20px; border-radius:32px } .coach-copy { padding-inline:8px }
+  .cities { padding-top:88px } .map-card { border-radius:24px }
+}
+/* Phones: city names would pile up, so they move into a tap-to-show tip */
+@media (max-width:640px) {
+  .map-labels { display:none } .map-tip { display:block }
+}
+@media (max-width:400px) { .nav-links a:nth-child(1) { display:none } } /* keeps the pill inside very narrow phones; the hero already has a How it works button */
+@media (max-width:520px) {
+  .vtabs { grid-template-columns:1fr }  .vmap { width:44% } .vmap small { display:none }
+  .vcall, .vchip { font-size:11px; padding:6px 10px } .vchips { left:10px; top:10px }
+  .groups { grid-template-columns:1fr }
+   .btn { height:50px; padding:0 22px }
+  .cta-row .btn { flex:1 1 auto }
+}
+/* Reduced motion: fewer and gentler. Fades stay, travel, scaling and sliding go. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-hl { transition:opacity .2s }
+  :root { --dy:0px; --pop:1 }
+  html { scroll-behavior:auto }
+  *, *::before, *::after { animation-duration:.2s !important; animation-delay:0s !important }
+  h1 .pos path, .step .grow, .step .pop, .pin .ring, .step .zone, .scan, .vring, .vtrail, .glitch, .glitch::before, .glitch::after { animation:none !important }
+  .map-label { transform:none }
+  .step:hover, .group:hover, .btn:hover .arrow { transform:none }
+  .btn-glass:hover::before { scale:none }
+  .logo:hover .kick, .logo:hover .badge { translate:none; rotate:none; scale:none }
+}
+
+/* Nav: white liquid glass (Apple-style). A thin fill so the material reads as glass, a neutral (desaturated) backdrop so the teal
+   never tints it, a top specular glow, a light sheen that slides across on hover, light-catching lens edges and a gradient rim
+   brightest at the top-left and bottom-right corners. The teal button keeps a raised relief. */
+.nav-in { position:relative; isolation:isolate; gap:6px; padding:7px 8px; border:1px solid rgba(255,255,255,.28);
+  background:radial-gradient(120% 95% at 50% -35%, rgba(255,255,255,.8), rgba(255,255,255,0) 62%), linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,.4));
+  -webkit-backdrop-filter:blur(16px) grayscale(1) brightness(2.6) contrast(.85); backdrop-filter:blur(16px) grayscale(1) brightness(2.6) contrast(.85);
+  box-shadow:0 1px 2px rgba(0,30,27,.12), 0 10px 24px -4px rgba(0,30,27,.34), 0 26px 50px -14px rgba(0,30,27,.4),
+    inset 0 1px 1px rgba(255,255,255,1), inset 0 -1px 1px rgba(255,255,255,.65),
+    inset 4px 4px 10px -5px rgba(255,255,255,.95), inset -4px -4px 10px -5px rgba(255,255,255,.75),
+    inset 0 -14px 22px -14px rgba(0,40,36,.18) }
+.nav-in::before { content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(112deg, transparent 30%, rgba(255,255,255,.75) 45%, rgba(255,255,255,.18) 54%, transparent 66%) 130% 0 / 260% 100% no-repeat;
+  transition:background-position 1.1s var(--ease-out) }
+.nav-in::after { content:""; position:absolute; inset:0; z-index:1; border-radius:inherit; padding:1.5px; pointer-events:none;
+  background:linear-gradient(135deg, #FFFFFF, rgba(255,255,255,.3) 32%, rgba(255,255,255,.08) 55%, rgba(255,255,255,.35) 78%, #FFFFFF);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0) }
+.logo { color:var(--teal-700); gap:11px; padding-right:12px }
+.nav-links { gap:2px }
+.nav-links a, .nav-links button { color:#34524E; padding:12px 14px; font-weight:600 }
+.nav-links [aria-current], .nav-links a:hover { color:var(--teal-900) }
+.nav-links [aria-current]::after { display:none }
+.nav-hl { background:linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.5));
+  box-shadow:0 2px 8px rgba(0,40,36,.14), inset 0 1px 1px #FFFFFF, inset 0 -1px 1px rgba(255,255,255,.6), inset 0 0 0 1px rgba(255,255,255,.55);
+  transition:transform .38s var(--ease-out), width .38s var(--ease-out), height .38s var(--ease-out), opacity .2s, box-shadow .3s, background .3s }
+.nav-cta { background:linear-gradient(145deg,#0E8F82,#014B45); height:46px;
+  box-shadow:5px 7px 14px rgba(1,47,43,.42), -3px -3px 8px rgba(255,255,255,.85), inset 1.5px 1.5px 2px rgba(255,255,255,.32), inset -2px -2px 4px rgba(0,0,0,.22) }
+.nav-cta:active { transform:none; background:linear-gradient(145deg,#014B45,#0A7A6F); box-shadow:inset 4px 4px 9px rgba(0,0,0,.42), inset -2px -2px 5px rgba(255,255,255,.14) }
+@media (hover:hover) and (pointer:fine) {
+  .nav-in:hover::before { background-position:-30% 0 }
+  .nav-links a:hover, .nav-links button:hover { color:var(--teal-900) }
+  .nav-cta:hover { background:linear-gradient(145deg,#12A092,#016056); transform:translateY(-1px); box-shadow:6px 9px 16px rgba(1,47,43,.45), -3px -3px 8px rgba(255,255,255,.85), inset 1.5px 1.5px 2px rgba(255,255,255,.4), inset -2px -2px 4px rgba(0,0,0,.2) }
+}
+@media (max-width:700px) { .nav-in { padding:5px 6px; gap:4px } .nav-links a, .nav-links button { padding:10px 9px } }
+@media (prefers-reduced-transparency: reduce) { .nav-in { background:#FFFFFF; -webkit-backdrop-filter:none; backdrop-filter:none } }
+@media (prefers-contrast: more) { .nav-in { background:#FFFFFF; -webkit-backdrop-filter:none; backdrop-filter:none; border-color:rgba(0,30,27,.35) } }
+@media (prefers-reduced-motion: reduce) { .nav-in::before { transition:none } }

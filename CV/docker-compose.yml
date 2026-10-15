@@ -1,0 +1,60 @@
+# Start:  docker compose up --build      then open http://localhost:8000/trivela
+# AI coach: put the model API key in ../trivela-frontend/coach/.env (copy .env.example there); without it the coach stays off.
+# Public link (optional):  docker compose --profile tunnel up --build
+#   -> the https://....trycloudflare.com address is printed in the "tunnel" container's logs.
+#
+# NVIDIA GPU (Windows needs Docker Desktop with the WSL 2 backend and a current NVIDIA driver):
+#   1. change TORCH_INDEX below to https://download.pytorch.org/whl/cu124
+#   2. uncomment the "deploy:" block under the engine service
+name: trivela
+
+services:
+  engine:
+    build:
+      context: .
+      additional_contexts:
+        web: ../trivela-frontend/landing   # the Trivela site, served by the engine at /web (and /trivela)
+      args:
+        TORCH_INDEX: https://download.pytorch.org/whl/cpu
+    image: trivela-engine
+    container_name: trivela-engine
+    ports:
+      - "8000:8000"
+    volumes:
+      - workspace:/app/tactical_workspace   # uploads, processed video and saved analyses survive restarts
+      - ./videos:/content                   # put match files here for the HUD's "Server videos folder" tab (type just the file name)
+    environment:
+      # Browser sites allowed to call the engine besides its own pages and localhost (comma-separated),
+      # e.g. https://you.github.io for a hosted Trivela site
+      TRIVELA_ALLOWED_ORIGINS: ${TRIVELA_ALLOWED_ORIGINS:-}
+      TRIVELA_MAX_UPLOAD_GB: ${TRIVELA_MAX_UPLOAD_GB:-20}
+      TRIVELA_COACH_URL: http://coach:5600   # the engine forwards /api/coach here
+    restart: unless-stopped
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  coach:
+    build: ../trivela-frontend/coach   # AI coach (Gemma on AMD): only the engine can reach it, it has no public port
+    image: trivela-coach
+    container_name: trivela-coach
+    env_file:
+      - path: ../trivela-frontend/coach/.env
+        required: false
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate --url http://engine:8000
+    depends_on:
+      engine:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  workspace:

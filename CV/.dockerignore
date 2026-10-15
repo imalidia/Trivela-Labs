@@ -1,0 +1,8 @@
+videos/
+*.mp4
+*.mov
+*.mkv
+README.md
+tests/
+.pytest_cache/
+__pycache__/

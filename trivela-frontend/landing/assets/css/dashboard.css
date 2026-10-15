@@ -1,0 +1,239 @@
+/* Layout: the landing's teal world. A teal header holds the nav pill, the greeting and a live CV window; a paper sheet slides over it with past analyses, saved players, then saved teams beside recent activity. Light only, like the landing. */
+:root {
+  --teal:#015C55; --teal-700:#014B45; --teal-900:#012F2B; --teal-500:#0B8478;
+  --mint:#8FE8DA; --mint-soft:#D3F5EF; --paper:#F2F8F7; --pitch:#E6F2F0; --white:#FFFFFF;
+  --ink:#06201D; --ink-2:#4A6663; --line:rgba(1,92,85,.14); --ball:#FFD60A;
+  --display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --ease-out:cubic-bezier(.23,1,.32,1); --ease-in-out:cubic-bezier(.77,0,.175,1); --ease:var(--ease-out);
+  --dy:16px; --pop:.96; /* entrance travel and start scale; flattened under reduced motion */
+  color-scheme:light;
+}
+* { box-sizing:border-box }
+html { scroll-behavior:smooth; scroll-padding-top:24px; background:var(--paper) }
+body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.5 var(--body); -webkit-font-smoothing:antialiased; overflow-x:clip }
+a { color:inherit; text-decoration:none }
+button, input { font:inherit; color:inherit }
+button { background:none; border:0; cursor:pointer; padding:0 }
+:focus-visible { outline:3px solid var(--teal-500); outline-offset:3px; border-radius:12px }
+.top :focus-visible { outline-color:var(--mint) }
+.wrap { max-width:1240px; margin:0 auto; padding-inline:24px }
+.num { font-variant-numeric:tabular-nums }
+@keyframes rise { from { opacity:0; transform:translateY(var(--dy)) } }
+.rise { animation:rise .7s calc(.1s + var(--i,0) * 80ms) var(--ease-out) both }
+@keyframes settle { from { opacity:0; transform:scale(var(--pop)) } }
+
+/* Nav: the landing's centered pill. Home is a quiet link like the rest; the one filled button is the main action, New analysis */
+.nav { position:absolute; inset:0 0 auto 0; z-index:50; padding:calc(16px + env(safe-area-inset-top,0px)) 12px 0; display:flex; justify-content:center; pointer-events:none }
+.nav-in { pointer-events:auto; display:flex; align-items:center; gap:10px; padding:6px; background:#fff; border-radius:999px; border:1px solid rgba(1,92,85,.1); box-shadow:0 4px 0 rgba(1,47,43,.22), 0 14px 30px rgba(0,25,22,.18); animation:navIn .75s .1s cubic-bezier(.34,1.45,.64,1) both }
+@keyframes navIn { from { opacity:0; transform:translateY(calc(var(--dy) * -1.4)) scale(.92) } }
+.logo { display:flex; align-items:center; gap:12px; color:var(--teal); font:700 20px/1 var(--display); letter-spacing:-.025em; white-space:nowrap; padding-right:10px }
+.logo .kick { display:block; flex:none; transition:translate .32s var(--ease-out) }
+.logo .badge { width:50px; height:50px; border-radius:50%; overflow:hidden; background:var(--teal); display:block; transition:translate .32s cubic-bezier(.77,0,.175,1), rotate .32s var(--ease-out), scale .32s var(--ease-out) }
+.logo img { width:100%; height:100%; display:block; transform:scale(1.32) }
+.nav-links { position:relative; display:flex; align-items:center; gap:6px; font:600 16px/1 var(--display); letter-spacing:-.01em }
+.nav-links a { position:relative; z-index:1; color:var(--ink); padding:12px; transition:color .2s }
+.nav-hl { position:absolute; left:0; top:0; z-index:0; border-radius:999px; background:var(--mint-soft); opacity:0; pointer-events:none; transition:transform .38s var(--ease-out), width .38s var(--ease-out), height .38s var(--ease-out), opacity .2s }
+.nav-hl.fresh { transition:opacity .2s }
+.nav-cta { display:inline-flex; align-items:center; gap:8px; height:44px; padding:0 18px; margin-left:4px; border-radius:999px; background:var(--teal); color:#fff; font:600 16px/1 var(--display); letter-spacing:-.01em; white-space:nowrap; transition:background-color .2s, transform .12s var(--ease) }
+.nav-cta:active, .btn:active { transform:scale(.97) }
+
+/* Buttons */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:10px; height:48px; padding:0 24px; border-radius:999px; font-weight:600; font-size:16px; white-space:nowrap; user-select:none;
+  transition:transform .14s var(--ease), box-shadow .25s, background-color .25s, color .25s }
+.btn-teal { background:var(--teal); color:#fff }
+.btn-ghost { background:var(--paper); color:var(--teal) }
+.btn-sm { height:40px; padding:0 18px; font-size:15px }
+/* Quiet text link on teal (same as the landing's "See how it works") */
+.btn-text { display:inline-flex; align-items:center; gap:4px; height:44px; color:var(--mint); font:600 17px/1 var(--display); letter-spacing:-.01em; transition:color .2s, transform .12s var(--ease) }
+.btn-text:active { transform:scale(.97) }
+.btn-text .chev { transition:transform .25s var(--ease) }
+.arrow { transition:transform .25s var(--ease) }
+@media (hover:hover) and (pointer:fine) {
+  .logo:hover .kick { translate:6px 0 }
+  .logo:hover .badge { translate:0 -5px; rotate:18deg; scale:1.05 }
+  .nav-links a:hover { color:var(--teal) }
+  .nav-cta:hover, .btn-teal:hover { background:var(--teal-700) }
+  .btn-text:hover { color:#fff } .btn-text:hover .chev { transform:translateX(3px) }
+  .latest:hover { background:rgba(1,47,43,.72) }
+  .btn-ghost:hover { background:var(--mint-soft) }
+  .btn:hover .arrow, .row:hover .arrow, .latest:hover .arrow { transform:translateX(4px) }
+  .row:hover { background:var(--paper) }
+}
+
+/* Header: greeting and season numbers on the left; on the right, what needs you now: the analysis that is running and the latest result. One pitch center-circle arc in the corner, as on the landing */
+.top { position:relative; overflow:hidden; background:var(--teal); color:#fff; padding-block:calc(120px + env(safe-area-inset-top,0px)) 112px }
+.top::before { content:""; position:absolute; width:760px; aspect-ratio:1; right:-260px; top:-220px; border-radius:50%; border:1.5px solid rgba(255,255,255,.08); pointer-events:none }
+.top-grid { position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.08fr); gap:56px; align-items:center }
+h1 { margin:0; font:700 clamp(2.6rem,5vw,4.3rem)/1 var(--display); letter-spacing:-.04em; text-wrap:balance }
+h1 em { font-style:normal; color:var(--mint) }
+.lede { margin:18px 0 0; max-width:31em; font-size:clamp(1.02rem,1.4vw,1.15rem); color:rgba(255,255,255,.82) }
+.top .btn-text { margin-top:18px; margin-left:-2px }
+.meta { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:20px; margin:28px 0 0; padding-top:22px; border-top:1px solid rgba(255,255,255,.18) }
+.meta div { display:flex; flex-direction:column-reverse; min-width:0 }
+.meta dd { margin:0; font:700 30px/1 var(--display); letter-spacing:-.02em }
+.meta dt { margin-top:6px; font-size:13.5px; color:rgba(255,255,255,.72) }
+
+/* Right column: the running analysis on top, the latest finished match under it. Both are dark glass cards on the teal */
+.now { display:grid; gap:16px }
+.chip.busy::before { content:""; flex:none; width:8px; height:8px; border-radius:50%; background:var(--mint); animation:livePulse 2s ease-out infinite }
+@keyframes livePulse { from { box-shadow:0 0 0 0 rgba(143,232,218,.6) } to { box-shadow:0 0 0 9px rgba(143,232,218,0) } }
+@keyframes scan { 0% { opacity:0; transform:translateX(-100%) } 8% { opacity:1 } 62% { opacity:1; transform:translateX(0) } 72%, 100% { opacity:0; transform:translateX(0) } }
+.cv-run, .latest { display:grid; gap:14px; padding:24px 26px 26px; border-radius:26px; background:rgba(1,47,43,.5); box-shadow:inset 0 0 0 1px rgba(255,255,255,.12), 0 30px 70px rgba(0,20,18,.22) }
+.run-top { display:flex; justify-content:space-between; align-items:flex-end; gap:16px }
+.run-top > div { min-width:0 }
+.run-top small, .latest small { display:block; font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--mint) }
+.run-top b { display:block; margin-top:6px; font:700 clamp(22px,2.2vw,28px)/1.15 var(--display); letter-spacing:-.025em }
+.run-top .run-pct { margin:0; font-size:clamp(40px,4vw,52px); line-height:1; letter-spacing:-.04em }
+/* Latest result: heatmap thumb beside the fixture, the three headline numbers under it, and a way into the report */
+.latest { grid-template-columns:132px minmax(0,1fr); grid-template-areas:"thumb main" "stats stats" "go go"; align-items:center; column-gap:20px; transition:background-color .2s }
+.latest .thumb { grid-area:thumb }
+.latest .thumb .pf { fill:rgba(255,255,255,.08) } .latest .thumb .hc { fill:var(--mint) } .latest .thumb .tl { stroke:rgba(255,255,255,.32) }
+.lt-main { grid-area:main; display:grid; gap:6px; min-width:0 }
+.latest .fixture { font-size:20px }
+.latest .score { background:var(--mint); color:var(--teal-900) }
+.lt-sub { font-size:14px; color:rgba(255,255,255,.72) }
+.lt-stats { grid-area:stats; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-top:16px; border-top:1px solid rgba(255,255,255,.14) }
+.lt-stats small { color:rgba(255,255,255,.66) }
+.lt-stats b { display:block; margin-top:4px; font:700 24px/1 var(--display); letter-spacing:-.02em }
+.lt-go { grid-area:go; display:flex; align-items:center; gap:8px; font-weight:600; color:var(--mint) }
+.latest.arrive > * { animation:rise 400ms calc(var(--k,0) * 60ms) var(--ease-out) both }
+.run-bar { height:6px; border-radius:6px; background:rgba(255,255,255,.12); overflow:hidden }
+.run-bar i { display:block; height:100%; border-radius:6px; background:var(--mint); transform-origin:left; transition:transform .6s var(--ease-out) }
+.run-meta { display:flex; justify-content:space-between; gap:4px 12px; flex-wrap:wrap; margin:0; font-size:14px; color:rgba(255,255,255,.72) }
+.cv-run.arrive > * { animation:rise 400ms calc(var(--k,0) * 60ms) var(--ease-out) both } /* "All caught up" rises in after the progress card fades out */
+
+/* Sheet: paper slides over the teal header */
+.sheet { position:relative; z-index:2; margin-top:-40px; background:var(--paper); border-radius:40px 40px 0 0; padding-block:56px 112px }
+.block + .block { margin-top:72px }
+.panel { background:#fff; border-radius:28px; padding:28px; box-shadow:0 1px 2px rgba(1,47,43,.05), 0 20px 44px rgba(1,47,43,.07) }
+.sec-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px 24px; flex-wrap:wrap; margin-bottom:18px }
+.sec-head > div:first-child { min-width:0 }
+h2 { margin:0; display:flex; align-items:center; gap:12px; font:800 clamp(1.7rem,2.6vw,2.2rem)/1.05 var(--display); letter-spacing:-.035em; text-wrap:balance }
+h2:focus { outline:none }
+.count { padding:6px 10px; border-radius:999px; background:var(--mint-soft); color:var(--teal); font:600 14px/1 var(--body); letter-spacing:0 }
+.sec-head p { margin:6px 0 0; color:var(--ink-2) }
+.tools { display:flex; gap:10px; flex-wrap:wrap; align-items:center }
+.seg { display:inline-flex; gap:2px; padding:4px; border-radius:999px; background:var(--paper) }
+.seg button { height:34px; padding:0 14px; border-radius:999px; font-size:14px; font-weight:600; color:var(--ink-2); transition:background-color .2s, color .2s, box-shadow .2s }
+.seg button[aria-pressed="true"] { background:#fff; color:var(--teal); box-shadow:0 1px 3px rgba(1,47,43,.16) }
+.seg .n { margin-left:6px; font-weight:500; color:var(--ink-2) }
+.search { position:relative; display:flex; align-items:center }
+.search svg { position:absolute; left:14px; color:var(--ink-2); pointer-events:none }
+.search input { width:220px; height:42px; padding:0 14px 0 38px; border-radius:999px; border:1px solid var(--line); background:#fff; font-size:15px }
+.search input:focus { border-color:var(--teal-500) }
+
+/* Past analyses: one row per match. Thumbnail heatmap, fixture, three headline stats, status */
+.rows { list-style:none; margin:0; padding:0 }
+.rows li + li { border-top:1px solid var(--line) }
+.row { display:grid; grid-template-columns:112px minmax(0,1fr) auto 132px 18px; grid-template-areas:"thumb main stats chip go"; align-items:center; gap:20px; margin-inline:-12px; padding:14px 12px; border-radius:18px; transition:background-color .2s }
+.thumb { grid-area:thumb; position:relative; display:block; overflow:hidden; border-radius:10px; aspect-ratio:105/68; max-width:100% }
+.thumb svg { display:block; width:100%; height:100% }
+.thumb .pf { fill:var(--pitch) } .thumb .hc { fill:var(--teal) }
+.thumb .tl { fill:none; stroke:rgba(1,92,85,.3); stroke-width:.7 }
+.thumb.busy::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg, rgba(143,232,218,0) 60%, rgba(143,232,218,.5)); border-right:2px solid var(--teal-500); animation:scan 3s cubic-bezier(.77,0,.175,1) infinite }
+.row-main { grid-area:main; display:grid; gap:4px; min-width:0 }
+.fixture { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; font:700 18px/1.25 var(--display); letter-spacing:-.02em }
+.score { padding:3px 9px; border-radius:8px; background:var(--teal-900); color:#fff; font-size:15px; letter-spacing:0 }
+.vs { font:500 15px var(--body); color:var(--ink-2) }
+.row-sub { font-size:14px; color:var(--ink-2) }
+.row-stats { grid-area:stats; display:grid; grid-template-columns:repeat(3,84px); gap:8px }
+.row-stats small { display:block; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2) }
+.row-stats b { display:block; margin-top:3px; font:700 17px/1.1 var(--display); letter-spacing:-.01em }
+.row-stats .wait { grid-column:1 / -1; font-size:14px; color:var(--ink-2) }
+.chip { grid-area:chip; justify-self:start; display:inline-flex; align-items:center; gap:8px; height:30px; padding:0 12px; border-radius:999px; font-size:13px; font-weight:600; white-space:nowrap }
+.chip.ready { background:var(--mint-soft); color:var(--teal) }
+.chip.ready::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--teal) }
+.chip.busy { background:var(--teal-900); color:#fff }
+.go { grid-area:go; color:var(--teal); display:flex }
+.none { display:grid; justify-items:start; gap:12px; padding:28px 0 8px; color:var(--ink-2) }
+.none p { margin:0 }
+/* The analysis that just finished: its Ready chip and score settle in, then the three stats rise in turn. One-shot; the class only exists on the render right after completion */
+.just-ready .chip { animation:settle 260ms var(--ease-out) both }
+.just-ready .score { animation:settle 300ms 60ms var(--ease-out) both }
+.just-ready .row-stats > span { animation:rise 400ms calc(120ms + var(--k,0) * 50ms) var(--ease-out) both }
+
+
+.feed { list-style:none; margin:0; padding:0 }
+.feed li { display:grid; grid-template-columns:36px minmax(0,1fr); gap:12px; padding-block:12px }
+.feed li + li { border-top:1px solid var(--line) }
+.feed .ic { width:36px; height:36px; border-radius:12px; display:grid; place-items:center; background:var(--paper); color:var(--teal) }
+.feed p { margin:0; font-size:15px; line-height:1.4 }
+.feed .when { display:block; margin-top:2px; font-size:13px; color:var(--ink-2) }
+.feed li.fresh { animation:rise .5s var(--ease-out) both }
+
+.toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); z-index:60; display:flex; align-items:center; gap:14px; max-width:calc(100% - 32px); padding:10px 10px 10px 20px; border-radius:999px; background:var(--teal-900); color:#fff; font-size:15px; box-shadow:0 18px 40px rgba(0,20,18,.35);
+  opacity:0; visibility:hidden; transform:translate(-50%,24px); transition:opacity .25s, transform .35s var(--ease-out), visibility 0s .35s }
+.toast.on { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s }
+footer { background:var(--teal-900); color:rgba(255,255,255,.75); padding-block:36px calc(36px + env(safe-area-inset-bottom,0px)); font-size:14px }
+footer .wrap { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap }
+footer .logo { color:#fff; font-size:22px } footer .logo img { width:44px; height:44px; border-radius:13px; transform:none }
+
+@media (max-width:1100px) {
+  .top-grid { grid-template-columns:1fr; gap:44px }
+}
+@media (max-width:980px) {
+  .logo .wordmark { display:none } .logo { padding-right:0 } .logo .badge { width:44px; height:44px }
+  .nav-in { padding:5px; gap:4px } .nav-links { font-size:14px; gap:0 } .nav-links a { padding:10px 9px }
+  .nav-cta { height:40px; padding:0 14px; font-size:14px; margin-left:2px }
+}
+@media (max-width:860px) {
+  .row { grid-template-columns:96px minmax(0,1fr); grid-template-areas:"thumb main" "thumb chip" "stats stats"; gap:10px 16px }
+  .row-stats { grid-template-columns:repeat(3,minmax(0,1fr)); padding-top:4px }
+  .go { display:none }
+}
+@media (max-width:600px) {
+  .wrap { padding-inline:16px }
+  .nav-links { display:none }
+  .top { padding-block:calc(100px + env(safe-area-inset-top,0px)) 96px }
+  .meta { grid-template-columns:repeat(2,minmax(0,1fr)); row-gap:22px }
+  .cv-run, .latest { padding:20px; border-radius:22px } .latest { grid-template-columns:96px minmax(0,1fr); column-gap:14px }
+  .sheet { border-radius:28px 28px 0 0; padding-top:36px }
+  .block + .block { margin-top:56px }
+  .panel { padding:20px; border-radius:24px }
+  .tools, .search, .search input { width:100% }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dy:0px; --pop:1 }
+  html { scroll-behavior:auto }
+  *, *::before, *::after { animation-duration:.2s !important; animation-delay:0s !important }
+  .thumb.busy::after, .chip.busy::before { animation:none !important }
+  .logo:hover .kick, .logo:hover .badge { translate:none; rotate:none; scale:none }
+}
+
+/* Nav: white liquid glass (Apple-style). A thin fill so the material reads as glass, a neutral (desaturated) backdrop so the teal
+   never tints it, a top specular glow, a light sheen that slides across on hover, light-catching lens edges and a gradient rim
+   brightest at the top-left and bottom-right corners. The teal button keeps a raised relief. */
+.nav-in { position:relative; isolation:isolate; gap:6px; padding:7px 8px; border:1px solid rgba(255,255,255,.28);
+  background:radial-gradient(120% 95% at 50% -35%, rgba(255,255,255,.8), rgba(255,255,255,0) 62%), linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,.4));
+  -webkit-backdrop-filter:blur(16px) grayscale(1) brightness(2.6) contrast(.85); backdrop-filter:blur(16px) grayscale(1) brightness(2.6) contrast(.85);
+  box-shadow:0 1px 2px rgba(0,30,27,.12), 0 10px 24px -4px rgba(0,30,27,.34), 0 26px 50px -14px rgba(0,30,27,.4),
+    inset 0 1px 1px rgba(255,255,255,1), inset 0 -1px 1px rgba(255,255,255,.65),
+    inset 4px 4px 10px -5px rgba(255,255,255,.95), inset -4px -4px 10px -5px rgba(255,255,255,.75),
+    inset 0 -14px 22px -14px rgba(0,40,36,.18) }
+.nav-in::before { content:""; position:absolute; inset:0; z-index:-1; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(112deg, transparent 30%, rgba(255,255,255,.75) 45%, rgba(255,255,255,.18) 54%, transparent 66%) 130% 0 / 260% 100% no-repeat;
+  transition:background-position 1.1s var(--ease-out) }
+.nav-in::after { content:""; position:absolute; inset:0; z-index:1; border-radius:inherit; padding:1.5px; pointer-events:none;
+  background:linear-gradient(135deg, #FFFFFF, rgba(255,255,255,.3) 32%, rgba(255,255,255,.08) 55%, rgba(255,255,255,.35) 78%, #FFFFFF);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask:linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0) }
+.logo { color:var(--teal-700); gap:11px; padding-right:12px }
+.nav-links { gap:2px }
+.nav-links a, .nav-links button { color:#34524E; padding:12px 14px; font-weight:600 }
+.nav-links [aria-current], .nav-links a:hover { color:var(--teal-900) }
+.nav-links [aria-current]::after { display:none }
+.nav-hl { background:linear-gradient(180deg, rgba(255,255,255,.85), rgba(255,255,255,.5));
+  box-shadow:0 2px 8px rgba(0,40,36,.14), inset 0 1px 1px #FFFFFF, inset 0 -1px 1px rgba(255,255,255,.6), inset 0 0 0 1px rgba(255,255,255,.55);
+  transition:transform .38s var(--ease-out), width .38s var(--ease-out), height .38s var(--ease-out), opacity .2s, box-shadow .3s, background .3s }
+.nav-cta { background:linear-gradient(145deg,#0E8F82,#014B45); height:46px;
+  box-shadow:5px 7px 14px rgba(1,47,43,.42), -3px -3px 8px rgba(255,255,255,.85), inset 1.5px 1.5px 2px rgba(255,255,255,.32), inset -2px -2px 4px rgba(0,0,0,.22) }
+.nav-cta:active { transform:none; background:linear-gradient(145deg,#014B45,#0A7A6F); box-shadow:inset 4px 4px 9px rgba(0,0,0,.42), inset -2px -2px 5px rgba(255,255,255,.14) }
+@media (hover:hover) and (pointer:fine) {
+  .nav-in:hover::before { background-position:-30% 0 }
+  .nav-links a:hover, .nav-links button:hover { color:var(--teal-900) }
+  .nav-cta:hover { background:linear-gradient(145deg,#12A092,#016056); transform:translateY(-1px); box-shadow:6px 9px 16px rgba(1,47,43,.45), -3px -3px 8px rgba(255,255,255,.85), inset 1.5px 1.5px 2px rgba(255,255,255,.4), inset -2px -2px 4px rgba(0,0,0,.2) }
+}
+@media (max-width:700px) { .nav-in { padding:5px 6px; gap:4px } .nav-links a, .nav-links button { padding:10px 9px } }
+@media (prefers-reduced-transparency: reduce) { .nav-in { background:#FFFFFF; -webkit-backdrop-filter:none; backdrop-filter:none } }
+@media (prefers-contrast: more) { .nav-in { background:#FFFFFF; -webkit-backdrop-filter:none; backdrop-filter:none; border-color:rgba(0,30,27,.35) } }
+@media (prefers-reduced-motion: reduce) { .nav-in::before { transition:none } }

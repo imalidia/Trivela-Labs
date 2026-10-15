@@ -1,0 +1,255 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/jpeg" href="assets/img/favicon.jpg">
+<title>Trivela Labs</title>
+<script>document.documentElement.classList.add('js')</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=DM+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bagel+Fat+One&family=Caprasimo&family=Chakra+Petch:wght@700&family=Fraunces:ital,wght@1,900&family=Gloock&family=Instrument+Serif:ital@1&family=Lobster&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:ital,wght@1,900&family=Righteous&family=Shrikhand&family=VT323&text=differently.&display=swap">
+<link rel="stylesheet" href="assets/css/landing.css">
+
+<nav class="nav" id="nav" aria-label="Main">
+  <div class="nav-in">
+    <a class="logo" href="./" onclick="event.preventDefault();history.scrollRestoration='manual';location.replace(location.pathname)" aria-label="Trivela Labs home"><span class="kick"><span class="badge"><img src="assets/img/logo.png" alt=""></span></span><span class="wordmark">Trivela Labs</span></a>
+    <div class="nav-links"><a href="#how">How it works</a><a href="#stats">Stats</a><a href="#demo">Demo</a><a href="#coach">AI coach</a></div>
+    <a class="nav-cta" href="dashboard.html">Dashboard</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="wrap hero-in">
+    <div class="hero-copy">
+      <h1><span class="w" style="--i:0">See</span> <span class="w" style="--i:1">the</span> <span class="w" style="--i:2">game</span> <span class="w pos" style="--i:3"><span class="sz">differently.</span><span class="pfw" aria-hidden="true"><span class="pf">differently.</span></span></span></h1>
+      <p class="lede">Upload a match video. Get passes, shots, heatmaps and 25+ stats.</p>
+      <div class="cta-row">
+        <a class="btn btn-glass btn-teal-glass" href="app.html#upload">Analyze a match</a>
+        <a class="btn btn-glass btn-white-glass" href="#how">See how it works</a>
+      </div>
+    </div>
+    <div class="vis" id="vis">
+      <div class="vis-card"><canvas id="cv" aria-label="Animated match tracking demo: Harbor City and Northgate United players, the ball, passes, shots and a heatmap building up"></canvas></div>
+      <div class="chip c1"><small>Possession</small><b class="num" id="chPos">56%</b><div class="meter"><i id="chPosBar" style="width:56%"></i></div></div>
+      <div class="chip c2"><small>Passes</small><b class="num" id="chPass">498</b></div>
+      <div class="chip c3"><small>Top speed</small><b class="num" id="chTop">31.0 km/h</b></div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section class="cities" id="cities" aria-labelledby="citiesTitle">
+  <div class="wrap">
+    <div class="sec-head">
+      <div data-reveal><span class="kicker">Football cities</span><h2 id="citiesTitle">One game. Every city.</h2></div>
+      <p data-reveal style="--i:1">One game, played all over the world. Trivela is here to revolutionize it, one pitch at a time.</p>
+    </div>
+    <div class="map-card" id="mapCard" data-reveal style="--i:2">
+      <div class="map" id="map">
+        <svg id="mapDots" viewBox="0 0 105 54" aria-hidden="true"></svg>
+        <svg id="mapRoutes" viewBox="0 0 105 54" role="img" aria-label="Map of Europe, the Mediterranean and North Africa linking football cities with animated routes"></svg>
+        <div class="map-labels" id="mapLabels" aria-hidden="true"></div>
+        <div class="map-tip" id="mapTip" aria-live="polite">Tap a city</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sheet" id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <div data-reveal><span class="kicker">How it works</span><h2>From match video to match report.</h2></div>
+      <p data-reveal style="--i:1">No tagging and no spreadsheets. Add a video, check the team colors, and the analysis builds itself.</p>
+    </div>
+    <div class="steps">
+      <article class="step" data-reveal>
+        <svg id="upSvg" viewBox="0 0 360 220" role="img" aria-label="A video file uploading"><rect width="360" height="220" fill="#fff"/>
+          <rect class="zone" x="34" y="30" width="292" height="160" rx="22" fill="#E6F2F0" stroke="#015C55" stroke-opacity=".4" stroke-width="2" stroke-dasharray="7 7"/>
+          <circle id="upRing" cx="180" cy="84" r="26" fill="none" stroke="#015C55" stroke-width="2" opacity="0"/>
+          <circle cx="180" cy="84" r="26" fill="#015C55"/>
+          <g id="upArrow"><path d="M180 96V72M170 81l10-10 10 10" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></g>
+          <path id="upCheck" d="M169 85l8 8 15-17" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none" stroke-dasharray="40" stroke-dashoffset="40" opacity="0"/>
+          <g id="upPill"><rect x="92" y="130" width="176" height="38" rx="19" fill="#fff"/><text x="112" y="154" font-family="DM Sans,sans-serif" font-size="14" font-weight="600" fill="#06201D">derby-full-match.mp4</text>
+            <rect x="112" y="161" width="136" height="3" rx="2" fill="#D3F5EF"/><rect id="upBar" x="112" y="161" width="136" height="3" rx="2" fill="#015C55"/></g>
+          <text id="upStatus" x="180" y="184" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="11" font-weight="600" fill="#4A6663"></text></svg>
+        <div class="txt"><span class="tag"><i>1</i>Upload</span><h3>Add your match video</h3><p>Drop in a full match or a highlights clip. MP4 and MOV both work.</p></div>
+      </article>
+      <article class="step" data-reveal style="--i:1">
+        <svg id="trkSvg" viewBox="0 0 360 220" role="img" aria-label="Tracked players on a pitch">
+          <rect width="360" height="220" fill="#012F2B"/>
+          <g fill="none" stroke="#fff" stroke-opacity=".35" stroke-width="1.6"><rect x="16" y="16" width="328" height="188" rx="6"/><line x1="180" y1="16" x2="180" y2="204"/><circle cx="180" cy="110" r="32"/><rect x="16" y="64" width="50" height="92"/><rect x="294" y="64" width="50" height="92"/></g>
+          <g id="trk">
+            <g fill="#fff"><circle cx="96" cy="70" r="7"/><circle cx="130" cy="130" r="7"/><circle cx="214" cy="90" r="7"/><circle cx="250" cy="150" r="7"/></g>
+            <g fill="#012F2B" stroke="#fff" stroke-width="1.5"><circle cx="160" cy="76" r="7"/><circle cx="196" cy="140" r="7"/><circle cx="280" cy="84" r="7"/></g>
+            <g fill="none" stroke="#8FE8DA" stroke-width="2.5" stroke-linecap="round"><path d="M200 70v-10h10M232 60h10v10M242 108v10h-10M210 118h-10v-10"/></g>
+            <g><rect x="190" y="40" width="76" height="18" rx="9" fill="#fff"/><text x="228" y="53" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="11" font-weight="700" fill="#015C55">#10 · 31 km/h</text></g>
+            <path d="M96 70 L130 130 L214 90" stroke="#8FE8DA" stroke-width="2" stroke-dasharray="5 5" fill="none"/><circle cx="214" cy="90" r="4.5" fill="#FFD60A" stroke="#06201D"/>
+          </g></svg>
+        <div class="txt"><span class="tag"><i>2</i>Track</span><h3>Watch it follow the game</h3><p>Players, teams and the ball are followed frame by frame.</p></div>
+      </article>
+      <article class="step" data-reveal style="--i:2">
+        <svg id="cmpSvg" viewBox="0 0 360 220" role="img" aria-label="Team comparison bars"><rect width="360" height="220" fill="#fff"/>
+          <g font-family="DM Sans,sans-serif" font-size="13" font-weight="600" fill="#06201D">
+            <text x="34" y="52">Possession</text><text class="cnt" data-a="56" data-b="44" x="326" y="52" text-anchor="end" fill="#4A6663">56 · 44</text>
+            <rect x="34" y="62" width="292" height="10" rx="5" fill="#D3F5EF"/><rect class="bar" data-w="164" x="34" y="62" width="164" height="10" rx="5" fill="#015C55"/>
+            <text x="34" y="106">Shots on target</text><text class="cnt" data-a="6" data-b="3" x="326" y="106" text-anchor="end" fill="#4A6663">6 · 3</text>
+            <rect x="34" y="116" width="292" height="10" rx="5" fill="#D3F5EF"/><rect class="bar" data-w="194" x="34" y="116" width="194" height="10" rx="5" fill="#015C55"/>
+            <text x="34" y="160">Distance</text><text class="cnt" data-a="112" data-b="110" data-unit=" km" x="326" y="160" text-anchor="end" fill="#4A6663">112 km · 110 km</text>
+            <rect x="34" y="170" width="292" height="10" rx="5" fill="#D3F5EF"/><rect class="bar" data-w="148" x="34" y="170" width="148" height="10" rx="5" fill="#015C55"/></g></svg>
+        <div class="txt"><span class="tag"><i>3</i>Understand</span><h3>Read the match</h3><p>Passes, shots, heatmaps and 20 stats, ready to explore and export.</p></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="vision" id="vision" aria-labelledby="visionTitle">
+  <div class="wrap">
+    <header class="vhead" data-reveal>
+      
+      <h2 id="visionTitle"><span class="glitch" data-text="Advanced">Advanced</span> computer vision, built for football.</h2>
+      <p class="vlede">Trivela reads raw match video the way an analyst does. It finds every player, tells the teams apart and follows each one from frame to frame.</p>
+    </header>
+    <div class="vstage" data-reveal style="--i:1">
+      <div class="vwin" id="vwin">
+        <div class="vshot" id="vshot" role="tabpanel" aria-labelledby="vt0">
+          <img src="assets/img/vision-crop.jpg" width="2000" height="937" alt="A football match frame, then the same play with a ring marked under every player and the ball tracked">
+          <img class="after" src="assets/img/vision-marked.jpg" width="2000" height="937" alt="" aria-hidden="true">
+          <svg class="vsvg" viewBox="0 0 2000 937" preserveAspectRatio="none" aria-hidden="true">
+            <g transform="translate(-113 0) scale(1.1128)">
+              <g class="vg" data-l="0"><circle class="vring" cx="1303" cy="255" r="26" fill="#8FE8DA" fill-opacity=".45"/></g>
+              <g class="vg" data-l="2" id="vgTrack"><path class="vtrail" d="M1600 742C1530 768 1470 788 1416 792" fill="none" stroke="#8FE8DA" stroke-width="7" stroke-linecap="round"/><circle class="vring" cx="1412" cy="790" r="34" fill="#8FE8DA" fill-opacity=".5"/></g>
+            </g>
+          </svg>
+          <div class="vl" data-l="0"><span class="vcall" style="right:calc(33.1% + 40px); top:9%"><b>Ball</b> tracked</span><span class="vcall" style="left:16px; top:16px; --d:1"><b>13</b> detections in this frame</span></div>
+          <div class="vl" data-l="1"><div class="vchips"><span class="vchip"><b>Team A</b> 5 players</span><span class="vchip" style="--d:1"><b>Team B</b> 7 players</span></div></div>
+          <div class="vl" data-l="2"><span class="vcall" style="right:4%; top:85%"><b>#12</b> keeps the same ID</span></div>
+          <div class="vl" data-l="3"><div class="vmap"><svg viewBox="0 0 105 68" aria-hidden="true"><rect width="105" height="68" rx="3" fill="#0B8478" fill-opacity=".35"/><g fill="none" stroke="#fff" stroke-opacity=".45" stroke-width=".6"><rect x="1.5" y="1.5" width="102" height="65" rx="1.5"/><line x1="52.5" y1="1.5" x2="52.5" y2="66.5"/><circle cx="52.5" cy="34" r="9"/><rect x="1.5" y="14" width="16" height="40"/><rect x="87.5" y="14" width="16" height="40"/></g><g id="vdots"></g></svg><small>Top-down positions</small></div></div>
+          <span class="scan" aria-hidden="true"></span><span class="vspot" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+    <div class="vtabs" role="tablist" aria-label="What the vision model does" data-reveal style="--i:2">
+      <button class="vtab" role="tab" id="vt0" aria-controls="vshot" aria-selected="true"><b>Detects</b><span>Players, referee and ball in every frame, even when they overlap.</span><i></i></button>
+      <button class="vtab" role="tab" id="vt1" aria-controls="vshot" aria-selected="false" tabindex="-1"><b>Separates teams</b><span>Kit colors split the sides, so every box carries its team.</span><i></i></button>
+      <button class="vtab" role="tab" id="vt2" aria-controls="vshot" aria-selected="false" tabindex="-1"><b>Follows players</b><span>Each player keeps the same number from frame to frame.</span><i></i></button>
+      <button class="vtab" role="tab" id="vt3" aria-controls="vshot" aria-selected="false" tabindex="-1"><b>Maps the pitch</b><span>Positions land on a top-down pitch for heatmaps, passes and speed.</span><i></i></button>
+    </div>
+  </div>
+</section>
+
+<section class="stats" id="stats">
+  <div class="wrap">
+    <div class="stats-top"><div class="big20 num" id="big20" aria-hidden="true" data-reveal><span class="n">25</span><span class="plus"></span></div><div data-reveal style="--i:1"><span class="kicker">Match stats</span><h2 style="font-size:clamp(2rem,4vw,3.2rem)">Twenty-five stats, in five groups.</h2><p style="margin-top:18px">Start with four headline numbers. Open the full list when you want the detail.</p></div></div>
+    <div class="groups">
+      <div class="group" data-reveal><h4>Possession</h4><ul><li>Possession %</li><li>Touches</li><li>Touches in opposition box</li><li>Time in final third</li><li>Dispossessed</li></ul></div>
+      <div class="group" data-reveal style="--i:1"><h4>Passing</h4><ul><li>Passes</li><li>Passing accuracy %</li><li>Long balls</li><li>Crosses</li><li>Passing map</li></ul></div>
+      <div class="group" data-reveal style="--i:2"><h4>Attacking</h4><ul><li>Shots</li><li>Shots on target</li><li>xG</li><li>Shots map</li><li>Dribbles</li><li>Corners</li><li>Free kicks</li></ul></div>
+      <div class="group" data-reveal style="--i:3"><h4>Physical</h4><ul><li>Distance covered</li><li>Sprints</li><li>Sprint speed</li><li>Ball speed</li><li>Heat maps</li></ul></div>
+      <div class="group" data-reveal style="--i:4"><h4>Defending</h4><ul><li>Tackles</li><li>Saves</li><li>Defensive contribution</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="demo" id="demo" aria-labelledby="demoTitle">
+  <div class="wrap">
+    <div class="sec-head">
+      <div data-reveal><span class="kicker">Live demo</span><h2 id="demoTitle">A real report. Try it right here.</h2></div>
+      <p data-reveal style="--i:1">This is the report for a sample match. Switch the views and teams to see what you get for your own games.</p>
+    </div>
+    <div class="rep" data-reveal style="--i:2">
+      <div class="rep-head">
+        <div class="rep-score"><span class="crest h" aria-hidden="true">HC</span><span class="tn">Harbor City</span><span class="big num" aria-label="2 to 1">2 – 1</span><span class="tn">Northgate United</span><span class="crest a" aria-hidden="true">NU</span></div>
+        <div class="rep-meta"><i aria-hidden="true"></i>Sample match · Full time 90:00</div>
+      </div>
+      <div class="rep-body">
+        <div>
+          <div class="rep-ctrl">
+            <div class="seg" role="tablist" aria-label="Pitch view"><span class="thumb" aria-hidden="true"></span><button role="tab" data-view="heat" aria-controls="repPitch">Heatmap</button><button role="tab" data-view="shots" aria-controls="repPitch">Shot map</button><button role="tab" data-view="passes" aria-controls="repPitch">Pass network</button></div>
+            <div class="seg" role="group" aria-label="Team"><span class="thumb" aria-hidden="true"></span><button data-team="home" style="--c:var(--home)"><i aria-hidden="true"></i>Harbor City</button><button data-team="away" style="--c:var(--away)"><i aria-hidden="true"></i>Northgate</button><button data-team="both">Both</button></div>
+          </div>
+          <div class="rep-pitch" id="repPitch" role="tabpanel">
+            <svg id="repSvg" viewBox="0 0 105 68" role="img" aria-label="Heatmap for Harbor City">
+              <defs><filter id="repBlur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="1.9"/></filter><clipPath id="repClip"><rect x="1" y="1" width="103" height="66" rx="1"/></clipPath></defs>
+              <g fill="#fff" fill-opacity=".028"><rect x="1" y="1" width="10.3" height="66"/><rect x="21.6" y="1" width="10.3" height="66"/><rect x="42.2" y="1" width="10.3" height="66"/><rect x="62.8" y="1" width="10.3" height="66"/><rect x="83.4" y="1" width="10.3" height="66"/></g>
+              <g id="repUnder" clip-path="url(#repClip)"></g>
+              <g fill="none" stroke="#fff" stroke-opacity=".38" stroke-width=".35">
+                <rect x="1" y="1" width="103" height="66" rx="1"/><line x1="52.5" y1="1" x2="52.5" y2="67"/><circle cx="52.5" cy="34" r="9.15"/>
+                <rect x="1" y="13.85" width="16.5" height="40.3"/><rect x="87.5" y="13.85" width="16.5" height="40.3"/>
+                <rect x="1" y="24.84" width="5.5" height="18.32"/><rect x="98.5" y="24.84" width="5.5" height="18.32"/>
+                <path d="M17.5 26.7A9.15 9.15 0 0 1 17.5 41.3M87.5 26.7A9.15 9.15 0 0 0 87.5 41.3"/>
+              </g>
+              <g fill="#fff" fill-opacity=".45"><circle cx="52.5" cy="34" r=".5"/><circle cx="12" cy="34" r=".4"/><circle cx="93" cy="34" r=".4"/></g>
+              <g id="repOver"></g>
+            </svg>
+          </div>
+          <div class="rep-legend" id="repLegend" aria-live="polite"></div>
+        </div>
+        <div class="rep-side">
+          <div class="rep-card">
+            <h3>Team comparison</h3>
+            <ul class="cmp">
+              <li><b>56%</b><span>Possession</span><b>44%</b><div class="bar" aria-hidden="true"><i style="--f:56"></i><i style="--f:44"></i></div></li>
+              <li><b>498</b><span>Passes</span><b>391</b><div class="bar" aria-hidden="true"><i style="--f:498"></i><i style="--f:391"></i></div></li>
+              <li><b>87%</b><span>Pass accuracy</span><b>81%</b><div class="bar" aria-hidden="true"><i style="--f:87"></i><i style="--f:81"></i></div></li>
+              <li><b>14</b><span>Shots</span><b>9</b><div class="bar" aria-hidden="true"><i style="--f:14"></i><i style="--f:9"></i></div></li>
+              <li><b>6</b><span>Shots on target</span><b>3</b><div class="bar" aria-hidden="true"><i style="--f:6"></i><i style="--f:3"></i></div></li>
+              <li><b>112.4 km</b><span>Distance</span><b>109.8 km</b><div class="bar" aria-hidden="true"><i style="--f:112.4"></i><i style="--f:109.8"></i></div></li>
+            </ul>
+          </div>
+          <div class="rep-card">
+            <h3>Key moments</h3>
+            <div class="moms">
+              <button class="mom" data-goal="0" aria-pressed="false"><span class="t">23'</span><span class="ico" style="--c:var(--home)" aria-hidden="true">G</span><span><b>Goal</b> <small>#9 · Harbor City</small></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+              <button class="mom" data-goal="1" aria-pressed="false"><span class="t">51'</span><span class="ico" style="--c:var(--away)" aria-hidden="true">G</span><span><b>Goal</b> <small>#10 · Northgate United</small></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+              <button class="mom" data-goal="2" aria-pressed="false"><span class="t">78'</span><span class="ico" style="--c:var(--home)" aria-hidden="true">G</span><span><b>Goal</b> <small>#7 · Harbor City</small></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="rep-foot">
+        <p>Your matches get the same report, with all 20 stats.</p>
+        <div><a class="textlink" href="app.html#report">Open the full report <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a><a class="btn btn-teal btn-sm" href="app.html#upload">Analyze your match</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="coach" id="coach" aria-labelledby="coachTitle">
+  <div class="wrap">
+    <div class="coach-card" data-reveal>
+      <div class="coach-copy">
+        <span class="kicker">AI coach</span>
+        <h2 id="coachTitle">Ask your match anything.</h2>
+        <p class="coach-lede">A football-trained coach that has read every number in your report. Ask in plain words and get a straight answer, backed by your own match data.</p>
+        <ul class="coach-points">
+          <li><b>Answers from your match.</b> It looks every number up, so it never guesses a stat.</li>
+          <li><b>Talks like a coach.</b> Who controlled the game, who did the running and where it turned.</li>
+          <li><b>Writes in seconds.</b> A match report, player scouting cards and a stats-only commentary timeline.</li>
+          <li><b>Stays on football.</b> No betting tips, no predictions, no off-topic chatter.</li>
+        </ul>
+        <div class="coach-badges" aria-label="How the coach is built">
+          <span class="cbadge"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 3h18v18l-4.6-4.6V7.6H7.6z"/><path d="M7.9 9.7 3 14.6V21h6.4l4.9-4.9H7.9z"/></svg>Powered by AMD</span>
+          <span class="cbadge"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.6 5.4 4.6 9.4 10 10-5.4.6-9.4 4.6-10 10-.6-5.4-4.6-9.4-10-10 5.4-.6 9.4-4.6 10-10z"/></svg>Google Gemma</span>
+          <span class="cbadge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="m12 7.5 4.3 3.1-1.6 5h-5.4l-1.6-5z" fill="currentColor"/><path d="M12 7.5V2.6M16.3 10.6l4.6-1.5M14.7 15.6l2.8 3.9M9.3 15.6l-2.8 3.9M7.7 10.6 3.1 9.1"/></svg>Trained on football data</span>
+        </div>
+        <div class="cta-row"><a class="btn btn-white" href="app.html#report">Try the AI coach <svg class="arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a></div>
+      </div>
+      <div class="coach-chat" role="img" aria-label="Example chat: the coach explains how Harbor City controlled the sample match">
+        <div class="cc-head"><span class="cc-av" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="9" cy="14.5" r="5.2" fill="none" stroke="currentColor" stroke-width="3.2"/><rect x="9" y="7.6" width="13" height="4.8" rx="1.3" fill="currentColor"/><circle cx="9" cy="14.5" r="1.7" fill="currentColor"/><circle cx="4.6" cy="5.6" r="1.9" fill="none" stroke="currentColor" stroke-width="1.7"/></svg></span><span><b>Trivela AI coach</b><small>Harbor City 2 – 1 Northgate United</small></span></div>
+        <div class="cc-body">
+          <div class="cc-msg me" style="--d:0">How did we control the middle?</div>
+          <div class="cc-msg ai" style="--d:1">You had <b>56%</b> of the ball and completed <b>87%</b> of your passes to Northgate's 81%. That kept them chasing, and you won the shot count <b>14 to 9</b>.</div>
+          <div class="cc-msg me" style="--d:2">Who did the running?</div>
+          <div class="cc-msg ai" style="--d:3">Harbor City covered <b>112.4 km</b>, 2.6 km more than Northgate. Want the top five players by distance?</div>
+          <div class="cc-typing" style="--d:4" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+        <div class="cc-input" aria-hidden="true"><span>Ask about this match…</span><i><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></i></div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+
+<script src="assets/js/landing.js"></script>
