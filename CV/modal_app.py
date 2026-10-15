@@ -25,11 +25,12 @@ BUSY = ("scanning", "processing", "finalizing")    # same as app.py
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("ffmpeg", "libgl1", "libglib2.0-0", "curl", "xz-utils")
+    .apt_install("ffmpeg", "libgl1", "libglib2.0-0", "curl", "xz-utils", "tesseract-ocr")   # tesseract: the score bug
     .run_commands("curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz"
                   " | tar -xJ -C /usr/local --strip-components=1")
     .pip_install("torch", "torchvision", index_url="https://download.pytorch.org/whl/cu126")
-    .pip_install("ultralytics", "fastapi", "uvicorn", "python-multipart", "pyyaml", "huggingface_hub", "scipy", "lap>=0.5.12")
+    .pip_install("ultralytics", "fastapi", "uvicorn", "python-multipart", "pyyaml", "huggingface_hub", "scipy", "lap>=0.5.12",
+                 "pytesseract")
     # football detection weights, baked into the image
     .run_commands("mkdir -p /app && cd /app && python -c \"from huggingface_hub import hf_hub_download; "
                   "hf_hub_download(repo_id='martinjolif/yolo-football-player-detection', "

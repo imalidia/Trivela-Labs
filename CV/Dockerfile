@@ -14,15 +14,16 @@ ENV PYTHONUNBUFFERED=1 \
     YOLO_CONFIG_DIR=/tmp/Ultralytics
 
 # ffmpeg/ffprobe: video repair, probing and encoding. libgl1/libglib2.0-0: OpenCV runtime libraries.
+# tesseract-ocr: reads the broadcast score bug, so goals are known.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 \
+ && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 tesseract-ocr \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # torch first, from the CPU (or CUDA) index, so ultralytics doesn't pull the multi-GB default CUDA build
 RUN pip install torch torchvision --index-url "${TORCH_INDEX}" \
- && pip install ultralytics fastapi uvicorn python-multipart pyyaml huggingface_hub scipy "lap>=0.5.12"
+ && pip install ultralytics fastapi uvicorn python-multipart pyyaml huggingface_hub scipy "lap>=0.5.12" pytesseract
 
 # football detection weights, baked in so the container starts offline
 RUN python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='martinjolif/yolo-football-player-detection', filename='yolo-football-player-detection.pt', local_dir='.')" \

@@ -67,8 +67,14 @@ WIDE_MIN = 0.12     # minimum grass ratio to treat a shot as a wide tactical vie
 MIN_TRACK_LEN = 25  # frames a track must live to be listed as a real player
 CAM_SC = 0.25        # scale used for camera-motion estimation
 PLAYER_H_M = 1.78    # average player height (metres) used as a pixel->metre ruler
-SPRINT_MS = 7.0      # m/s (~25 km/h) counts as a sprint
-STRIKE_KMH = 75.0    # smoothed ball speed that counts as a strike
+SPRINT_MS = 7.0      # m/s (25.2 km/h): a sprint, measured on the speed over the last second
+SPRINT_END_MS = 6.0  # ...which ends once that speed drops below this
+SPRINT_MIN_S = 0.2   # a sprint counts once that 1-second speed has stayed above SPRINT_MS this long
+MAX_RUN_MS = 10.4    # 37.4 km/h, about the fastest a footballer runs: faster readings are tracking glitches
+SPEED_WIN_S = 1.0    # speeds (top speed, sprints) are averaged over this window: single frames jitter
+STRIKE_KMH = 65.0    # smoothed ball speed that counts as a strike (a shot, cross, long ball or clearance)
+STRIKE_REARM_KMH = 45.0  # after a strike the ball must slow below this, or turn by 60+ degrees, before the next one counts
+BALL_DEPTH_POW = 0.5 # a ball in flight rises: its vertical image motion is part height, part depth (see GroundModel)
 
 TEAM_CODE = {"team_a": 0, "team_b": 1, "goalkeeper": 2, "official": 3}
 DEFAULT_BGR = {"team_a": (60, 60, 225), "team_b": (245, 205, 60), "goalkeeper": (220, 70, 217), "official": (30, 210, 250)}
@@ -166,6 +172,24 @@ def drop_part_boxes(xyxy, conf, keep):
         if not dup: out.append(i)
     return sorted(out)
 
+def fuse_people(cur, prev, skip_cls):
+    """People boxes of this frame merged with the previous frame's (both detected: the ball needs every frame). A
+    detector's confidence flickers frame to frame (a keeper against the net: 0.44, 0.78, 0.24, 0.76...): a box that
+    is weak now but was strong a frame ago keeps the stronger score, and a person missed now is taken from then"""
+    if prev is None or not len(prev): return cur
+    d = np.array(cur.data, np.float32, copy=True); pd = np.asarray(prev.data, np.float32); add = []
+    for r in pd:
+        if int(r[5]) in skip_cls or r[4] < 0.3: continue
+        best, j = 0.0, -1
+        for i, q in enumerate(d):
+            if int(q[5]) in skip_cls: continue
+            v = box_iou(r[:4], q[:4])
+            if v > best: best, j = v, i
+        if best >= 0.5: d[j, 4] = max(d[j, 4], r[4])
+        elif best < 0.2: add.append(r)
+    if add: d = np.concatenate([d, np.array(add, np.float32)])
+    return type(cur)(d, cur.orig_shape)
+
 def ball_over_pitch(gm, x, y, H):
     """True when there is turf at or just below the ball in the image: on the pitch or in the air above it. Off it
     (stands, boards, benches, the scoreboard) the detector's 'balls' are heads, lamps and logos"""
@@ -190,11 +214,17 @@ LABW = np.array([0.7, 1.3, 1.3], np.float32)
 KIT_OUTLIER = 0.3
 OFF_KIT_SHARE = 0.7
 OFF_KIT_MIN = 20
+# ...except a track that is off-kit almost every time from the start: a keeper half-hidden by the post or a crowd
+# often only lives a few dozen frames per piece, never reaching OFF_KIT_MIN samples
+OFF_KIT_EARLY, OFF_KIT_EARLY_SHARE = 6, 0.8
 ROLE_SHARE = 0.25       # share of a track's detections the detector must call "referee"/"goalkeeper" to make it stick
 ROLE_MIN = 10           # detections seen before that share is trusted
 KIT_DECAY = 0.85        # older kit votes fade, so a track that slid onto another player follows his shirt
-KIT_EVERY = 4           # frames between kit samples once a track has its first ones: quick to notice a slid track
+KIT_EVERY = 2           # detections between kit samples once a track has its first ones: quick to notice a slid track
 KIT_SETTLED = 3.0       # decayed vote weight that makes a team "settled" for a track
+REF_KIT_SHARE = 0.5     # share of a track's shirt samples nearest the officials' kit that makes it an official
+REF_SAMPLE_CONF = 0.5   # detector "referee" boxes at least this sure teach the engine the officials' kit...
+REF_MIN_SAMPLES = 12    # ...once there are this many (a few stray "referee" boxes are ball boys, stewards, keepers)
 
 class TeamModel:
     def __init__(self, grass):
@@ -207,6 +237,10 @@ class TeamModel:
         self.roles = defaultdict(Counter)       # detector class votes per track: ref / gk / player
         self.settled = {}                       # track -> team its shirt settled on
         self.flipped = False                    # the last label_for() saw a settled track change team
+        self.ref_samples = []; self.ref_c = None # the officials' shirt colour, learned from the detector's referee boxes
+        self.nref = Counter()                   # shirt samples per track nearest the officials' colour
+        self.recent = defaultdict(lambda: deque(maxlen=8))   # the last shirt samples per track: "team" / "off" / "ref"
+        self.calls = Counter()                  # label_for calls per track (one per detection of it)
 
     @property
     def ready(self): return self.centroids is not None
@@ -248,6 +282,23 @@ class TeamModel:
         d = np.linalg.norm((self.centroids - f) * LABW, axis=1)
         return ("team_a" if np.argmin(d) == 0 else "team_b"), bool(d.min() > KIT_OUTLIER * self.sep)
 
+    def add_ref_sample(self, frame, box):
+        """A confident detector 'referee' box: its shirt teaches the officials' colour (refit while it is still young)"""
+        if len(self.ref_samples) >= 400: return
+        f = self.feature(frame, np.asarray(box).astype(int))
+        if f is None: return
+        self.ref_samples.append(f)
+        n = len(self.ref_samples)
+        if n >= REF_MIN_SAMPLES and (n < 64 or n % 32 == 0):
+            self.ref_c = np.median(np.array(self.ref_samples, np.float32), axis=0)
+
+    def refish(self, f):
+        """The sample is nearer the officials' colour than both kits (and clearly off both kits)"""
+        if self.ref_c is None: return False
+        dr = float(np.linalg.norm((self.ref_c - f) * LABW))
+        dt = float(np.min(np.linalg.norm((self.centroids - f) * LABW, axis=1)))
+        return dr < 0.6 * dt and dt > 0.5 * KIT_OUTLIER * self.sep
+
     def quick(self, frame, box):
         if not self.ready: return None
         f = self.feature(frame, np.asarray(box).astype(int))
@@ -258,35 +309,63 @@ class TeamModel:
         detector calls a referee "player" most of the time, and a player "referee" now and then. The team follows the
         recent shirt colour; `flipped` reports a track whose shirt settled on the other team (it slid onto someone else)"""
         c = self.votes[cid]; r = self.roles[cid]; self.flipped = False
-        r[role or "player"] += 1
-        if self.nvotes[cid] < OFF_KIT_MIN or (idx + cid) % KIT_EVERY == 0:
+        r[role or "player"] += 1; self.calls[cid] += 1
+        # counted per track, not on the frame number: with people detected every 2nd frame, (frame + id) % 4 never hit
+        # half of the ids, whose shirts then stopped being sampled after their first 20
+        if self.nvotes[cid] < OFF_KIT_MIN or self.calls[cid] % KIT_EVERY == 0:
             f = self.feature(frame, box)
             if f is not None:
                 if self.ready:
                     near, off = self.nearest(f)
                     for k in c: c[k] *= KIT_DECAY
-                    c[near] += 1; self.nvotes[cid] += 1; self.noff[cid] += off
+                    rf = self.refish(f)
+                    c[near] += 1; self.nvotes[cid] += 1; self.noff[cid] += off; self.nref[cid] += rf
+                    self.recent[cid].append("ref" if rf else "off" if off else "team")
                 else:
                     self.samples.append(f)
                     if len(self.samples) >= 150: self.fit()
-        n = sum(r.values())
-        if self.nvotes[cid] >= OFF_KIT_MIN and self.noff[cid] >= OFF_KIT_SHARE * self.nvotes[cid]:   # wears neither kit
-            return "goalkeeper" if r["gk"] > r["ref"] else "official"
+        n = sum(r.values()); nv = self.nvotes[cid]; rec = self.recent[cid]
+        if len(rec) >= OFF_KIT_EARLY:
+            # the latest shirt samples first: a track that slid from a player onto a keeper (or a referee) behind him
+            # wears another shirt from then on, while its long history still says "player"
+            n_off = sum(1 for x in rec if x != "team"); n_ref = sum(1 for x in rec if x == "ref")
+            if n_off >= 0.75 * len(rec):
+                role = "official" if (n_ref >= 0.5 * len(rec) or (r["ref"] > r["gk"] and r["ref"] >= ROLE_SHARE * n)) else "goalkeeper"
+                if self.settled.get(cid) in ("team_a", "team_b"): self.flipped = True
+                self.settled[cid] = role
+                return role
+            if n_off <= 0.25 * len(rec) and self.settled.get(cid) in ("goalkeeper", "official"):
+                self.flipped = True; self.settled.pop(cid, None)          # slid from a keeper onto a player
+                nv = 0                                                     # judge the new player on his own shirt
+        if nv >= OFF_KIT_MIN or (nv >= OFF_KIT_EARLY and self.noff[cid] >= OFF_KIT_EARLY_SHARE * nv):
+            if self.nref[cid] >= REF_KIT_SHARE * nv: return "official"            # wears the officials' colours
+            if self.noff[cid] >= OFF_KIT_SHARE * nv:                             # wears neither kit
+                if r["gk"] > r["ref"]: return "goalkeeper"
+                # the detector often calls a keeper "player"; once the officials' colour is known, an off-kit shirt
+                # that isn't theirs is a keeper's (before that, the old rule: the detector's vote decides)
+                return "goalkeeper" if self.ref_c is not None or r["ref"] == 0 else "official"
         if n >= ROLE_MIN:
-            if r["ref"] >= ROLE_SHARE * n: return "official"
             if r["gk"] >= ROLE_SHARE * n: return "goalkeeper"
+            # a player the detector now and then calls "referee" keeps his team when his shirt is clearly a kit
+            if r["ref"] >= ROLE_SHARE * n and (nv < OFF_KIT_MIN or self.noff[cid] >= 0.3 * nv): return "official"
         elif role:                                                # too new to judge: trust this detection
             return "official" if role == "ref" else "goalkeeper"
         team = max(("team_a", "team_b"), key=lambda t: c[t])
         if c[team] >= KIT_SETTLED:
             prev = self.settled.get(cid); self.settled[cid] = team
-            self.flipped = prev is not None and prev != team
+            self.flipped = self.flipped or (prev in ("team_a", "team_b") and prev != team)
         return team if c[team] else "team_a"
 
     def hand_over(self, old, new, team):
         # a split-off track starts with the shirt it has now, not the votes of the player it left
         self.votes[new] = Counter({team: self.votes[old][team]})
-        self.nvotes[new] = self.nvotes[old]; self.noff[new] = self.noff[old]
+        rec = self.recent[old]; self.recent[new] = deque(rec, maxlen=8)
+        if team in ("goalkeeper", "official") or self.settled.get(old) is None:
+            # a role split, or back to a player: count only the recent shirts, not the other person's history
+            self.nvotes[new] = len(rec); self.noff[new] = sum(1 for x in rec if x != "team")
+            self.nref[new] = sum(1 for x in rec if x == "ref")
+        else:
+            self.nvotes[new] = self.nvotes[old]; self.noff[new] = self.noff[old]; self.nref[new] = self.nref[old]
         self.settled[new] = team
 
 # ----------------------------------------------------------------------------
@@ -296,9 +375,9 @@ TRACKER_YAML = BASE_DIR / "botsort_football.yaml"
 # Thresholds measured on broadcast footage: a keeper in front of the net or a half-hidden player in a crowded box is
 # often detected at 0.30-0.45, so a new track must start below that; weaker boxes (0.12+) only extend existing tracks
 TRACKER_YAML.write_text("""tracker_type: botsort
-track_high_thresh: 0.30
+track_high_thresh: 0.25
 track_low_thresh: 0.12
-new_track_thresh: 0.30
+new_track_thresh: 0.22
 track_buffer: 150
 match_thresh: 0.80
 fuse_score: True
@@ -388,6 +467,35 @@ class CameraMotion:
             if resp > 0.05 and abs(dx) < g.shape[1] * 0.2 and abs(dy) < g.shape[0] * 0.2:
                 self.shift[:] = (dx / CAM_SC, dy / CAM_SC)
         self.cum += self.shift; self.prev = g
+
+class GroundModel:
+    """The pitch's perspective, measured from the players: their height in pixels grows linearly with the image row of
+    their feet (h = a + b*row, reaching zero at the horizon; on a Serie A broadcast this puts the camera ~20 m high).
+    Sideways, one pixel is 1.78/h metres. Depth is foreshortened on top of that by k = f*b/h, 2-4x on broadcast
+    footage, so a run towards the camera measured with the sideways ruler alone reads 2-4x too slow. The focal length
+    f follows from a typical camera distance (CAM_DIST_M) to the middle of the picture."""
+    def __init__(self, H): self.H = H; self.reset()
+    def reset(self): self.a = None; self.b = 0.0
+    def update(self, boxes):
+        if len(boxes) < 5: return
+        y = np.array([b[3] for b in boxes], np.float32); h = np.array([b[3] - b[1] for b in boxes], np.float32)
+        if y.std() < 0.04 * self.H: return              # everyone on about one row: no perspective to read
+        b, a = np.polyfit(y, h, 1)
+        b = float(min(0.4, max(0.0, b)))
+        a = float(np.median(h - b * y))                  # robust intercept for that slope
+        if self.a is None: self.a, self.b = a, b
+        else: self.a, self.b = 0.8 * self.a + 0.2 * a, 0.8 * self.b + 0.2 * b
+    def height(self, y):
+        return None if self.a is None else max(6.0, self.a + self.b * y)
+    def depth_factor(self, y):
+        """k: metres per vertical pixel / metres per sideways pixel, at image row y (1 when unknown)"""
+        h = self.height(y)
+        if h is None or self.b <= 0.0: return 1.0
+        f = self.height(self.H / 2.0) * CAM_DIST_M / PLAYER_H_M
+        return float(min(6.0, max(1.0, f * self.b / h)))
+    def metres(self, dx, dy, y, h_px, depth_pow=1.0):
+        s = PLAYER_H_M / max(1.0, h_px)
+        return float(math.hypot(dx * s, dy * s * self.depth_factor(y) ** depth_pow))
 
 def appearance(frame, b, grass):
     # kit/skin/shorts colour signature (HSV+V histogram of torso and legs, grass removed)
@@ -702,6 +810,7 @@ PITCH_L, PITCH_W = 105.0, 68.0
 GOAL_Y0, GOAL_Y1 = 30.34, 37.66
 BOX_D, BOX_Y0, BOX_Y1 = 16.5, 13.84, 54.16
 THIRD = PITCH_L / 3.0
+CAM_DIST_M = 60.0       # typical distance from the main broadcast camera to the middle of the picture (sets depth scale)
 GK_DEPTH_M = 9.0        # typical goalkeeper distance from his goal line: the pitch anchor
 DEPTH_GAMMA = 0.8       # the far half of the pitch is squeezed into fewer image rows
 GK_MIN_PLAYERS = 4      # outfield players needed in view to tell which goal a keeper stands in
@@ -723,7 +832,8 @@ DEAD_BALL_S, DEAD_BALL_M = 1.0, 0.8
 SAVE_WINDOW_S, SAVE_REACH_M = 2.5, 2.5
 MAX_MAP_PASSES = 1500
 COUNT_STATS = ("tackles", "interceptions", "clearances", "dispossessed", "dribbles", "crosses", "crosses_ok",
-               "box_touches", "shots", "shots_on", "saves", "corners", "free_kicks", "long_balls", "long_balls_att")
+               "box_touches", "shots", "shots_on", "goals", "saves", "corners", "free_kicks", "long_balls", "long_balls_att")
+GOAL_LOOKBACK_S = 150   # a goal (score change) belongs to the last shot up to this long before the score bug changed
 
 def _frames(path):
     with open(path) as fin:
@@ -786,11 +896,22 @@ class PitchMapper:
         # reference row) is converted back to pixels and rescaled to the depth of row y
         return (C / self.scale(fit, self.H * REF_ROW) + u - self.W / 2.0) * self.scale(fit, y)
 
+    def depth_y(self, fit, gtop, y):
+        """Metres from the far touchline (the top of the turf) to image row y: the distance from the camera grows as
+        players look smaller (pinhole camera: distance ~ 1/height), scaled so the middle of the picture is CAM_DIST_M
+        away (see GroundModel). None without a perspective reading (everyone on one row)"""
+        a, b = fit
+        if b <= 1e-3: return None
+        dist = lambda v: CAM_DIST_M * max(6.0, a + b * self.H / 2.0) / max(6.0, a + b * v)
+        return min(PITCH_W, max(0.0, dist(gtop) - dist(y)))
+
     def to_pitch(self, f, u, y):
         seg, C, fit, gtop = self.frame[f]
         x = min(PITCH_L, max(0.0, self.off.get(seg, PITCH_L / 2) + self.rel_x(C, fit, u, y)))
-        t = min(1.0, max(0.0, (y - gtop) / max(1.0, self.H - gtop)))
-        yy = PITCH_W * t ** DEPTH_GAMMA
+        yy = self.depth_y(fit, gtop, y)
+        if yy is None:
+            t = min(1.0, max(0.0, (y - gtop) / max(1.0, self.H - gtop)))
+            yy = PITCH_W * t ** DEPTH_GAMMA
         return (PITCH_L - x, PITCH_W - yy) if self.flip else (x, yy)
 
     def build(self, path):
@@ -799,6 +920,8 @@ class PitchMapper:
             ps = r["p"]; seg = r.get("s", 0); camx = r.get("k", 0.0)
             same = prev is not None and prev[0] == seg
             fit = _fit_height(ps) or (prev[3] if same else (0.08 * self.H, 0.0))
+            if same and prev[3] is not None:      # smoothed within a camera shot: one frame's few players are noisy
+                fit = (0.85 * prev[3][0] + 0.15 * fit[0], 0.85 * prev[3][1] + 0.15 * fit[1])
             C = 0.0
             if same:
                 C = prev[2] - (camx - prev[1]) * self.scale(fit, self.H * REF_ROW)
@@ -864,8 +987,10 @@ class PitchMapper:
 class MatchAnalytics:
     """Streams the frame log once (after PitchMapper) and turns positions + possession events into match stats.
     Coordinates are normalised so team A attacks towards x = 105 and team B towards x = 0."""
-    def __init__(self, pm, fps, G, events, gains, team_of, strikes=()):
+    def __init__(self, pm, fps, G, events, gains, team_of, strikes=(), goals=()):
         self.pm, self.fps, self.G, self.team_of = pm, float(fps), G, team_of
+        self.goals = sorted(goals); self.strike_log = []; self.shot_meta = []; self.side_team = {}; self.ball_img = None
+        self.img_trail = deque(); self.gk_trail = deque()   # the ball / the keepers in the picture over the last second
         # hard strikes measured in image space (see STRIKE_KMH): [frame, team]. One in the attacking third counts as a
         # shot when the kick tracker missed it, which it does when the pitch estimate jitters
         self.strikes = sorted(strikes); self.si = 0; self.pending = []; self.shot_frames = []
@@ -915,12 +1040,21 @@ class MatchAnalytics:
         while self.ei < len(self.events) and self.events[self.ei][0] <= f:
             self._event(self.events[self.ei]); self.ei += 1
         self._ball(f, r.get("b"))
+        b = r.get("b")
+        if b is not None and not b[2]:
+            self.ball_img = (f, b[0], b[1]); self.img_trail.append(self.ball_img)
+        while self.img_trail and f - self.img_trail[0][0] > 0.5 * self.fps: self.img_trail.popleft()
+        self.gk_trail.extend((f, (p[1] + p[3]) / 2.0, (p[2] + p[4]) / 2.0, p[4] - p[2]) for p in r["p"] if p[5] == 2)
+        while self.gk_trail and f - self.gk_trail[0][0] > 1.0 * self.fps: self.gk_trail.popleft()
         while self.si < len(self.strikes) and self.strikes[self.si][0] <= f:
             self._note_strike(f, *self.strikes[self.si]); self.si += 1
-        b = r.get("b")
-        if b is not None and not b[2] and self.ball and self.ball[-1][0] == f:
-            for it in self.pending:                                 # the flight after each recent strike
-                if 0 < f - it["f"] <= STRIKE_FLIGHT_S * self.fps: it["pts"].append(self.ball[-1])
+        gks = [(f, (p[1] + p[3]) / 2.0, (p[2] + p[4]) / 2.0, p[4] - p[2]) for p in r["p"] if p[5] == 2]
+        for it in self.pending:                                     # the flight after each recent strike
+            if not 0 < f - it["f"] <= STRIKE_SETTLE_S * self.fps: continue
+            it["gks"].extend(gks)
+            if b is not None and not b[2]:
+                it["img"].append((f, b[0], b[1]))
+                if self.ball and self.ball[-1][0] == f and f - it["f"] <= STRIKE_FLIGHT_S * self.fps: it["pts"].append(self.ball[-1])
         while self.pending and f - self.pending[0]["f"] > STRIKE_SETTLE_S * self.fps:
             self._strike_shot(self.pending.pop(0))
 
@@ -1084,6 +1218,7 @@ class MatchAnalytics:
 
     def _shot(self, k, team, g, ox, oy, on, v):
         self.shot_frames.append(k["f0"])
+        self.shot_meta.append({"f": k["f0"], "team": team, "g": g, "on": on, "i": len(self.shots), "goal": False})
         xg = shot_xg(ox, oy)
         self.bump("shots", team, g); self.xg[team] += xg
         if g >= 0: self.pl[g]["xg"] += xg
@@ -1106,6 +1241,32 @@ class MatchAnalytics:
     def finish(self):
         self._close_spell(); self._resolve_dribble(10 ** 12, -1); self._flush_kick()
         while self.pending: self._strike_shot(self.pending.pop(0))
+        for gf, side in self.goals: self._goal(gf, side)
+
+    def _goal(self, gf, side):
+        """A score change read off the broadcast: the goal is the last shot before it (else the last hard strike, which
+        then becomes a shot); it is on target, and its team tells which side of the score bug each team is"""
+        win = GOAL_LOOKBACK_S * self.fps
+        team = self.side_team.get(side, -1)
+        shots = [m for m in self.shot_meta if 0 <= gf - m["f"] <= win and not m["goal"] and (team < 0 or m["team"] == team)]
+        m = max(shots, key=lambda m: m["f"]) if shots else None
+        if m is None:
+            st = [it for it in self.strike_log if 0 <= gf - it["f"] <= win and (team < 0 or it["team"] == team)]
+            if st:
+                it = max(st, key=lambda it: it["f"])
+                end = PITCH_L if it["x"] > PITCH_L / 2 else 0.0
+                ax, ay = (it["x"], it["y"]) if end == PITCH_L else (PITCH_L - it["x"], PITCH_W - it["y"])
+                self._shot({"x": it["x"], "y": it["y"], "gk": -1, "f0": it["f"]}, it["team"], it["g"], ax, ay, True, 0.0)
+                m = self.shot_meta[-1]
+        if m is None:
+            if team in (0, 1): self.bump("goals", team)          # a goal without a tracked shot (scored off camera)
+            return
+        m["goal"] = True; team = m["team"]
+        self.side_team.setdefault(side, team); self.side_team.setdefault(1 - side, 1 - team)
+        if not m["on"]:
+            m["on"] = True; self.bump("shots_on", team, m["g"]); self.shots[m["i"]][3] = 1
+        self.bump("goals", team, m["g"])
+        self.shots[m["i"]].append(1)                               # [x, y, team, on, xg, kmh, goal]
 
     def _note_strike(self, f, sf, team):
         # where the ball was struck from: its last measured point, else the last carrier's feet
@@ -1116,21 +1277,46 @@ class MatchAnalytics:
         elif lc is not None and f - lc[2] <= self.fps and lc[0] in self.carry: x, y = self.carry[lc[0]][:2]
         else: return
         g = lc[0] if lc is not None and lc[1] == team and f - lc[2] <= self.fps else -1
-        self.pending.append({"f": sf, "team": team, "g": g, "x": x, "y": y, "pts": []})
+        # a strike is confirmed a few frames into the flight: judge the flight from where it began (up to 0.4 s back)
+        pre = [q for q in self.img_trail if sf - q[0] <= 0.4 * self.fps]
+        img0 = (pre[0][1], pre[0][2]) if pre else None
+        self.pending.append({"f": sf, "team": team, "g": g, "x": x, "y": y, "pts": [], "img": pre[1:], "gks": list(self.gk_trail),
+                             "img0": img0})
+        self.strike_log.append(self.pending[-1])
+
+    def _toward_keeper(self, it):
+        """(shot, on target) judged in the picture: the flight heads for a goalkeeper and gets close to him. Needs no
+        pitch estimate, which near the goal (steep perspective, few lines in view) is at its least reliable"""
+        pts, gks, p0 = it["img"], it["gks"], it["img0"]
+        if p0 is None or not pts or not gks: return False, False
+        xe, ye = pts[-1][1], pts[-1][2]
+        g = min(gks, key=lambda q: math.hypot(q[1] - xe, q[2] - ye))
+        h = max(10.0, g[3])
+        d0 = math.hypot(g[1] - p0[0], g[2] - p0[1])
+        ds = [math.hypot(g[1] - q[1], g[2] - q[2]) for q in pts]; de = min(ds)
+        if d0 < 2.0 * h: return False, False          # struck next to the keeper: his own kick, or a scramble
+        shot = de <= 0.55 * d0 and de <= 4.0 * h
+        # on target: it reaches him, or is lost from view still closing in on him (into the net, or a save)
+        lost_closing = ds[-1] == de and de <= 2.0 * h and pts[-1][0] - it["f"] <= 0.2 * self.fps
+        return shot, shot and (de <= 1.3 * h or lost_closing)
 
     def _strike_shot(self, item):
-        """A hard strike near a goal that heads towards it is a shot; away from it, a clearance. Judged on the goal the
-        ball travels to, not on which way the teams attack: on broadcast footage that direction is often guessed wrong"""
+        """A hard strike near a goal that heads towards it is a shot; away from it, a clearance. Judged first in the
+        picture (towards a keeper), else on the goal the ball travels to in the pitch estimate, not on which way the
+        teams attack: on broadcast footage that direction is often guessed wrong"""
         sf, team, g, x, y = item["f"], item["team"], item["g"], item["x"], item["y"]
         if any(abs(sf - f0) <= STRIKE_SETTLE_S * self.fps for f0 in self.shot_frames): return   # already a shot
         end = PITCH_L if x > PITCH_L / 2 else 0.0                 # the goal nearer the strike
+        ax, ay = (x, y) if end == PITCH_L else (PITCH_L - x, PITCH_W - y)   # in the frame where that goal is at x = 105
+        shot, on = self._toward_keeper(item)
+        if shot:
+            self._shot({"x": x, "y": y, "gk": -1, "f0": sf}, team, g, ax, ay, on, 0.0); return
         dist = math.hypot(end - x, PITCH_W / 2 - y)
         if dist > SHOT_RANGE_M: return
         pts = item["pts"]
         if pts:
             if abs(end - pts[-1][1]) >= abs(end - x) - 2.0: return  # flew away from that goal: a clearance or a pass
         elif dist > STRIKE_BLIND_M: return
-        ax, ay = (x, y) if end == PITCH_L else (PITCH_L - x, PITCH_W - y)   # in the frame where that goal is at x = 105
         self._shot({"x": x, "y": y, "gk": -1, "f0": sf}, team, g, ax, ay, False, 0.0)
 
     def result(self, keep):
@@ -1158,10 +1344,10 @@ class MatchAnalytics:
                 "player_heat_size": [PHEAT_NX, PHEAT_NY], "passes": self.passes, "shots": self.shots}
         return {"team": team, "players": players, "maps": maps}
 
-def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=(), pm_out=None):
+def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=(), pm_out=None, goals=()):
     """Two passes over the per-frame log: map pixels to the pitch, then count. keep = player ids to report."""
     pm = PitchMapper(W, H); pm.build(path)
-    ma = MatchAnalytics(pm, fps, G, events, gains, team_of, strikes)
+    ma = MatchAnalytics(pm, fps, G, events, gains, team_of, strikes, goals)
     for f, r in _frames(path): ma.frame(f, r)
     ma.finish()
     out = ma.result(keep)
@@ -1243,6 +1429,112 @@ class DetectorThread:
             import traceback; traceback.print_exc()
             self._put({"error": e})
         self._put(None)
+
+# ----------------------------------------------------------------------------
+# GOALS FROM THE SCORE BUG: broadcasts show the score in a corner graphic ("ROM 1-0 INT"). It is read with OCR every
+# few seconds in a worker thread; a goal is the score going up by one, confirmed by a second read. Optional: without
+# the tesseract binary (pip pytesseract + apt tesseract-ocr) nothing is read and goals come from the ball alone.
+# ----------------------------------------------------------------------------
+SCORE_EVERY_S = 2.0
+SCORE_BAND = 0.18        # the bug sits in the top 18% of the picture
+SCORE_RE = re.compile(r"(?<![\d:.])(\d{1,2}) ?[-\u2013\u2014] ?(\d{1,2})(?![\d:])")
+
+def _score_of(text):
+    """The score in an OCR'd line, or None. The match clock (mm:ss) never matches: a score uses a dash"""
+    for m in SCORE_RE.finditer(text):
+        a, b = int(m.group(1)), int(m.group(2))
+        if a <= 15 and b <= 15: return a, b
+    return None
+
+class ScoreReader:
+    def __init__(self, fps):
+        self.every = max(1, int(round(SCORE_EVERY_S * fps))); self.reads = []; self.box = None; self.fails = 0
+        self.q = queue.Queue(6); self.stop = False; self.ok = False
+        try:
+            import pytesseract
+            pytesseract.get_tesseract_version(); self.tess = pytesseract; self.ok = True
+        except Exception:
+            return
+        self.t = threading.Thread(target=self._run, daemon=True); self.t.start()
+
+    def offer(self, idx, frame):
+        if not self.ok or idx % self.every: return
+        H = frame.shape[0]
+        try: self.q.put_nowait((idx, frame[: int(H * SCORE_BAND)].copy()))
+        except queue.Full: pass                        # OCR is behind: skip this sample
+
+    def _ocr(self, img, psm=11):
+        g = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        for im in (g, 255 - g):                        # dark text on light, then light on dark
+            d = self.tess.image_to_data(im, config=f"--psm {psm}", output_type=self.tess.Output.DICT)
+            words = [(d["text"][i], d["left"][i], d["top"][i], d["width"][i], d["height"][i], d["line_num"][i], d["block_num"][i])
+                     for i in range(len(d["text"])) if d["text"][i].strip()]
+            line = " ".join(w[0] for w in words)
+            sc = _score_of(line)
+            if sc is None:                             # the dash may be its own word: join neighbours of digits
+                for i in range(len(words) - 2):
+                    sc = _score_of("".join(w[0] for w in words[i:i + 3]))
+                    if sc: break
+            if sc is not None:
+                hit = [w for w in words if any(ch.isdigit() for ch in w[0]) and _score_of(w[0]) or w[0] in ("-", "\u2013")]
+                return sc, (hit[0][1] // 2, hit[0][2] // 2, hit[0][3] // 2, hit[0][4] // 2) if hit else None
+        return None, None
+
+    def _run(self):
+        while not self.stop:
+            try: idx, band = self.q.get(timeout=0.5)
+            except queue.Empty: continue
+            try:
+                if self.box is not None:               # read just around the score once it has been found
+                    x, y, w, h = self.box; x0, y0 = max(0, x - 8 * h), max(0, y - 2 * h)
+                    sc, where = self._ocr(band[y0: y + 3 * h, x0: x + w + 8 * h], 6)
+                else:                                  # find it: each half of the band on its own reads far better
+                    W_ = band.shape[1]; sc = where = None
+                    for x0 in (0, W_ // 2):
+                        sc, where = self._ocr(band[:, x0: x0 + W_ // 2])
+                        if sc is not None:
+                            if where is not None: where = (where[0] + x0, where[1], where[2], where[3])
+                            break
+                if sc is None and self.box is not None:
+                    self.fails += 1
+                    if self.fails >= 4: self.box = None; self.fails = 0
+                elif sc is not None:
+                    self.fails = 0
+                    if self.box is None and where is not None: self.box = where
+                    self.reads.append((idx, sc[0], sc[1]))
+            except Exception as e:
+                print("score OCR failed:", e)
+
+    def close(self, timeout=20.0):
+        if not self.ok: return
+        t0 = time.time()
+        while not self.q.empty() and time.time() - t0 < timeout: time.sleep(0.2)
+        self.stop = True; self.t.join(timeout=5)
+
+    def goals(self):
+        """[(frame, side)]: side 0 = the score's left team, 1 = the right. A new score counts once read twice in a row;
+        a score that goes back down (a goal ruled out) removes that side's last goal"""
+        reads = sorted(self.reads); out = []; cur = None; cand = None
+        for idx, a, b in reads:
+            sc = (a, b)
+            if cur is None:
+                if cand is not None and cand[1] == sc: cur = sc; cand = None
+                else: cand = (idx, sc)
+                continue
+            if sc == cur: cand = None; continue
+            if cand is None or cand[1] != sc: cand = (idx, sc); continue
+            f0, (na, nb) = cand; cand = None
+            if na >= cur[0] and nb >= cur[1] and (na - cur[0]) + (nb - cur[1]) <= 2:
+                out += [(f0, 0)] * (na - cur[0]) + [(f0, 1)] * (nb - cur[1])
+            elif na <= cur[0] and nb <= cur[1]:
+                for side, n_ in ((0, cur[0] - na), (1, cur[1] - nb)):
+                    for _ in range(n_):
+                        j = max((i for i, g in enumerate(out) if g[1] == side), default=None)
+                        if j is not None: out.pop(j)
+            else:
+                continue                               # an impossible jump: a misread, keep the current score
+            cur = (na, nb)
+        return out
 
 _ENC = {}
 def pick_encoder():
@@ -1539,16 +1831,21 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 for (fr, gm), r in zip(chunk, run_batch([c_[0] for c_ in chunk])):
                     bn = r.boxes.cpu().numpy()
                     for xy, c, k in zip(bn.xyxy, bn.conf, bn.cls.astype(int)):
+                        if k in ref_ids and c >= REF_SAMPLE_CONF and valid_geometry(xy.astype(int), W, H):
+                            team.ref_samples.append(team.feature(fr, xy.astype(int))); continue
                         if k in ball_ids or k in ref_ids or k in gk_ids or c < 0.5: continue
                         bx = xy.astype(int)
                         if valid_geometry(bx, W, H) and on_turf(gm, bx):
                             f = team.feature(fr, bx)
                             if f is not None: team.samples.append(f)
             if len(team.samples) >= 60: team.fit()
+            team.ref_samples = [f_ for f_ in team.ref_samples if f_ is not None]
+            if len(team.ref_samples) >= REF_MIN_SAMPLES: team.ref_c = np.median(np.array(team.ref_samples, np.float32), axis=0)
         kit = team.kit_bgr(); tm["pre"] = time.time() - t_pre0; tm["gpu"] = 0.0; tm["batches"] = 0
 
         tracker, tracker_name = make_tracker(fps)
-        ident = IdentityManager(fps); cam = CameraMotion()
+        score = ScoreReader(fps)
+        ident = IdentityManager(fps); cam = CameraMotion(); ground = GroundModel(H)
         ball = BallTracker(); poss = PossessionEngine(fps); cuts = CutDetector()
 
         reader = FrameReader(cap, (W, H), maxq=32)
@@ -1562,14 +1859,18 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         idx = -1; wide_frames = 0; ball_seen = 0; wrote_any = False; in_wide = False
         tracker_failed = False; start = time.time()
         phys = {}; xev = []; last_sprint = {}; shots = []; shot_start = None
-        bw = {"p": None, "f": -10, "v": 0.0}; ball_max = 0.0; ball_sum = 0.0; ball_n = 0
-        last_strike = -10**9; strikes = 0; swaps_n = 0; splits_n = 0
+        bw = {"p": None, "f": -10, "v": 0.0, "raw": 0.0, "armed": True, "dir": None}; ball_max = 0.0; ball_sum = 0.0; ball_n = 0
+        strikes = 0; swaps_n = 0; splits_n = 0; prev_bn = None
         sigacc = {}; last_seen = {}
         seg_n = [0]          # camera segment id for the analytics log: bumped whenever the camera state resets
 
         def reset_state(f):
-            tracks.clear(); ball.reset(); ident.new_shot(); cam.reset(); poss.drop(f); bw["p"] = None; seg_n[0] += 1
-            for p_ in phys.values(): p_["wp"] = None
+            tracks.clear(); ball.reset(); ident.new_shot(); cam.reset(); poss.drop(f); seg_n[0] += 1
+            bw.update(p=None, v=0.0, raw=0.0, armed=True, dir=None)
+            ground.reset()
+            for p_ in phys.values():
+                p_["wp"] = None; p_["above"] = None
+                if p_["on"]: p_["on"] = False; p_["pk_sum"] += p_["pk"]; p_["pk_n"] += 1
             try: tracker.reset()
             except Exception: pass
 
@@ -1580,6 +1881,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             if item is None: break
             if "error" in item: raise item["error"]
             frame = item["frame"]; idx = item["idx"]
+            score.offer(idx, frame)
 
             if idx % 10 == 0:
                 el = time.time() - start; pf = (idx + 1) / (el + 1e-5)
@@ -1603,6 +1905,9 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
 
             bn = item["bn"]
             do_det = bn is not None and item["need"]          # people this frame (the ball is looked for on every frame)
+            if do_det and prev_bn is not None and prev_bn[0] == idx - 1:
+                bn = fuse_people(bn, prev_bn[1], ball_ids)
+            prev_bn = (idx, item["bn"]) if item["bn"] is not None else None
             cands = []
             if bn is not None:
                 xyxy = bn.xyxy; conf = bn.conf; cls = bn.cls.astype(int)
@@ -1632,17 +1937,19 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 for row in trk:
                     box = np.array(row[:4], np.float32); raw = int(row[4]); k = int(row[6])
                     plab = "official" if k in ref_ids else "goalkeeper" if k in gk_ids else None   # this detection only
-                    rows.append((raw, box, k, plab))
+                    rows.append((raw, box, k, plab, float(row[5])))
                     if raw not in ident.alias:
                         fresh.append({"raw": raw, "box": box, "cls": k, "h": float(max(1.0, box[3] - box[1])),
                                       "lab": plab or team.quick(frame, box), "app": appearance(frame, box, grass),
                                       "wpos": np.array([(box[0] + box[2]) / 2 - cam.cum[0], box[3] - cam.cum[1]], np.float32)})
                 ident.assign_new(idx, fresh, {ident.alias[r_[0]] for r_ in rows if r_[0] in ident.alias})
                 used = set(); boxes_now = {}
-                for raw, box, k, plab in rows:
+                for raw, box, k, plab, bconf in rows:
                     cid = ident.alias.get(raw)
                     if cid is None or cid in used: continue
                     used.add(cid)
+                    if k in ref_ids and bconf >= REF_SAMPLE_CONF and (idx + cid) % 8 == 0 and team.ready:
+                        team.add_ref_sample(frame, box)
                     lab = team.label_for(cid, frame, box.astype(int), idx, "ref" if k in ref_ids else "gk" if k in gk_ids else None)
                     if team.flipped:                     # shirt changed team: the tracker slid onto another player
                         old = cid; cid = ident.split(raw); used.add(cid); team.hand_over(old, cid, lab); splits_n += 1
@@ -1669,25 +1976,36 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         tr["vel"] = 0.5 * tr["vel"] + 0.5 * v; tr["box"] = nb; tr["lab"] = lab; tr["last"] = idx
                     team_info[cid] = lab; boxes_now[cid] = box
                     # camera-compensated speed / distance (metres estimated with player height as a ruler)
-                    ph = phys.setdefault(cid, {"wp": None, "wf": idx, "dist": 0.0, "top": 0.0, "top_f": idx, "spr": 0, "on": False,
-                                               "pk": 0.0, "pk_sum": 0.0, "pk_n": 0})   # pk: peak speed of the current sprint
-                    hh = ident.info[cid]["h"]
-                    if ph["wp"] is None:
-                        ph["wp"] = wpos.copy(); ph["wf"] = idx
-                    elif idx - ph["wf"] >= 5:
-                        m = float(np.hypot(*(wpos - ph["wp"]))) * PLAYER_H_M / max(1.0, hh)
-                        sp = m / ((idx - ph["wf"]) / fps)
-                        if sp <= 11.0:
-                            if sp >= 0.5: ph["dist"] += m
+                    # speed over the last second, in metres with the pitch's perspective (GroundModel); distance is
+                    # that speed integrated over time, so frame-to-frame box jitter adds nothing
+                    ph = phys.setdefault(cid, {"wp": None, "hist": deque(), "df": idx, "dist": 0.0, "top": 0.0, "top_f": idx,
+                                               "spr": 0, "on": False, "above": None, "pk": 0.0, "pk_sum": 0.0, "pk_n": 0})
+                    hh = ident.info[cid]["h"]; fy = float(box[3]); hist = ph["hist"]
+                    if ph["wp"] is None: hist.clear(); ph["df"] = idx
+                    ph["wp"] = wpos
+                    hist.append((idx, wpos.copy(), fy, hh))
+                    while idx - hist[0][0] > SPEED_WIN_S * fps: hist.popleft()
+                    f0, w0, y0, h0 = hist[0]
+                    if idx - f0 >= 0.6 * SPEED_WIN_S * fps:
+                        sp = ground.metres(wpos[0] - w0[0], wpos[1] - w0[1], 0.5 * (fy + y0), 0.5 * (hh + h0)) / ((idx - f0) / fps)
+                        if sp > MAX_RUN_MS:                      # an id that jumped to another player: start over
+                            hist.clear(); hist.append((idx, wpos.copy(), fy, hh)); ph["df"] = idx
+                        else:
+                            if sp >= 0.4: ph["dist"] += sp * min(idx - ph["df"], 0.5 * fps) / fps
+                            ph["df"] = idx
                             if sp > ph["top"]: ph["top"] = sp; ph["top_f"] = idx
-                            if ph["on"] and sp > ph["pk"]: ph["pk"] = sp
-                            if sp >= SPRINT_MS and not ph["on"]:
-                                ph["on"] = True; ph["spr"] += 1; ph["pk"] = sp
-                                if lab != "official" and idx - last_sprint.get(cid, -10**9) > fps * 3:
-                                    last_sprint[cid] = idx; xev.append([idx, "sprint", cid, TEAM_CODE[lab], round(sp * 3.6, 1)])
-                            elif sp < 5.0 and ph["on"]:
-                                ph["on"] = False; ph["pk_sum"] += ph["pk"]; ph["pk_n"] += 1
-                        ph["wp"] = wpos.copy(); ph["wf"] = idx
+                            if ph["on"]:
+                                ph["pk"] = max(ph["pk"], sp)
+                                if sp < SPRINT_END_MS: ph["on"] = False; ph["pk_sum"] += ph["pk"]; ph["pk_n"] += 1
+                            elif sp >= SPRINT_MS:
+                                if ph["above"] is None: ph["above"] = idx
+                                if idx - ph["above"] >= SPRINT_MIN_S * fps:
+                                    ph["on"] = True; ph["above"] = None; ph["spr"] += 1; ph["pk"] = sp
+                                    if lab != "official" and idx - last_sprint.get(cid, -10**9) > fps * 3:
+                                        last_sprint[cid] = idx; xev.append([idx, "sprint", cid, TEAM_CODE[lab], round(sp * 3.6, 1)])
+                            else:
+                                ph["above"] = None
+                ground.update([b_ for c_, b_ in boxes_now.items() if team_info.get(c_) in ("team_a", "team_b")])
                 ident.note_overlaps(idx, boxes_now)
                 for a_, b_ in ident.check_swaps(idx, boxes_now, frame, grass):
                     if a_ in tracks and b_ in tracks:
@@ -1714,14 +2032,25 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 ball_seen += 1
                 bwp = np.array([ball_pt[0] - cam.cum[0], ball_pt[1] - cam.cum[1]], np.float32)
                 if bw["p"] is not None and 1 <= idx - bw["f"] <= 3 and cur:
-                    med_h = float(np.median([b_[3] - b_[1] for _, b_, _ in cur]))
-                    v = float(np.hypot(*(bwp - bw["p"]))) / (idx - bw["f"]) * fps * PLAYER_H_M / max(1.0, med_h) * 3.6
+                    # the ball's speed with the pitch's perspective: player height at the ball's row as the ruler
+                    hb = ground.height(ball_pt[1]) or float(np.median([b_[3] - b_[1] for _, b_, _ in cur]))
+                    step = bwp - bw["p"]
+                    v = ground.metres(step[0], step[1], ball_pt[1], hb, BALL_DEPTH_POW) / (idx - bw["f"]) * fps * 3.6
                     if v < 160:
                         bw["v"] = 0.5 * bw["v"] + 0.5 * v
                         ball_max = max(ball_max, bw["v"]); ball_sum += bw["v"]; ball_n += 1
-                        if bw["v"] > STRIKE_KMH and idx - last_strike > fps * 1.5:
-                            last_strike = idx; strikes += 1
-                            xev.append([idx, "strike", -1, poss.last_team if poss.last_team is not None else -1, round(bw["v"], 1)])
+                        # a cross and the volley that follows it are two strikes a second apart: the next strike counts
+                        # once the ball has slowed (controlled) or turned sharply (struck again), not after a fixed wait
+                        if bw["v"] < STRIKE_REARM_KMH: bw["armed"] = True
+                        elif not bw["armed"] and bw["dir"] is not None:
+                            n_ = float(np.hypot(*step)) * float(np.hypot(*bw["dir"]))
+                            if n_ > 0 and float(np.dot(step, bw["dir"])) < 0.5 * n_: bw["armed"] = True
+                        # two fast readings in a row: a struck ball is only detected in a few frames of its flight
+                        # (motion blur), too few for the smoothed speed to build up
+                        if bw["armed"] and v > STRIKE_KMH and bw["raw"] > 0.7 * STRIKE_KMH:
+                            bw["armed"] = False; bw["dir"] = step; strikes += 1
+                            xev.append([idx, "strike", -1, poss.last_team if poss.last_team is not None else -1, round(max(v, bw["v"]), 1)])
+                        bw["raw"] = v
                 bw["p"] = bwp; bw["f"] = idx
 
             # ---- burned-in graphics ----
@@ -1746,6 +2075,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         J.update(status="finalizing", phase="Encoding final video & writing analytics", progress=99.9)
         poss.drop(idx)
         enc_name = enc.name; enc_blk = enc.blocked; enc.close(); enc = None
+        score.close(); goals = [] if cancelled else score.goals()
         cap.release(); cap = None
 
         if cancelled:
@@ -1821,7 +2151,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         try:
             ma = match_analytics(tmp_path, G, fps, W, H, poss.evlog, poss.events,
                                  {c: TEAM_CODE[l_] for c, l_ in team_info.items()}, real,
-                                 [[e_[0], e_[3]] for e_ in xev if e_[1] == "strike"], pm_box)
+                                 [[e_[0], e_[3]] for e_ in xev if e_[1] == "strike"], pm_box, goals)
             for c, row in ma["players"].items(): pl[str(c)].update(row)
         except Exception:
             import traceback; traceback.print_exc()

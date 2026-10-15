@@ -8,7 +8,7 @@
   'use strict';
 
   const GROUPS = ['Possession', 'Passing', 'Attacking', 'Set pieces', 'Defending', 'Physical', 'Spatial'];
-  const TOP = ['xG', 'Shots', 'Shots on target', 'Touches in opposition box', 'Passes', 'Corners', 'Tackles', 'Distance covered', 'Top speed'];
+  const TOP = ['Goals', 'xG', 'Shots', 'Shots on target', 'Touches in opposition box', 'Passes', 'Corners', 'Tackles', 'Distance covered', 'Top speed'];
   const LOWER_BETTER = new Set(['Dispossessed']);
   const NOT_JUDGED = new Set(['Saves', 'Possession']);   // more saves only means more shots faced; possession has its own bar
   const MAX_TOP = 8;
@@ -20,7 +20,7 @@
      always shown; a stat the clip didn't measure reads "—". Goalkeeping lists only the two keepers */
   const PCOLS = {
     distance: ['Distance', ' km', 2], top: ['Top speed', ' km/h', 1], sprints: ['Sprints'], sprint_kmh: ['Sprint speed', ' km/h', 1],
-    passes: ['Passes'], acc: ['Accuracy', '%'], touches: ['Touches'], shots: ['Shots'], shots_on: ['On target'], xg: ['xG', '', 2],
+    passes: ['Passes'], acc: ['Accuracy', '%'], touches: ['Touches'], shots: ['Shots'], shots_on: ['On target'], goals: ['Goals'], xg: ['xG', '', 2],
     dribbles: ['Dribbles'], box_touches: ['Touches in box'], ft_min: ['Final third', ' min', 1], crosses: ['Crosses'],
     corners: ['Corners'], free_kicks: ['Free kicks'], long_balls_att: ['Long balls'], long_balls: ['Accurate long balls'],
     def: ['Def. contribution'], tackles: ['Tackles'], interceptions: ['Interceptions'], clearances: ['Clearances'],
@@ -30,7 +30,7 @@
   const NO_BEST = new Set(['dispossessed', 'shots_faced', 'xg_faced']);   // more isn't better, so no "best" pill
   const PTABS = [
     ['top', 'Top stats', ['distance', 'top', 'sprints', 'passes', 'acc', 'touches', 'shots', 'xg', 'def']],
-    ['attack', 'Attack', ['shots', 'shots_on', 'xg', 'dribbles', 'box_touches', 'ft_min', 'crosses', 'corners', 'free_kicks']],
+    ['attack', 'Attack', ['goals', 'shots', 'shots_on', 'xg', 'dribbles', 'box_touches', 'ft_min', 'crosses', 'corners', 'free_kicks']],
     ['passing', 'Passes', ['passes', 'acc', 'long_balls_att', 'long_balls', 'crosses', 'touches']],
     ['defending', 'Defense', ['def', 'tackles', 'interceptions', 'clearances']],
     ['duels', 'Duels', ['won', 'dispossessed', 'tackles', 'dribbles', 'sprints', 'sprint_kmh']],

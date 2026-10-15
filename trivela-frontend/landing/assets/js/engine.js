@@ -27,6 +27,7 @@
     { g: 'Passing', k: 'Crosses', src: 'crosses' },
     { g: 'Attacking', k: 'Shots', src: 'shots' },
     { g: 'Attacking', k: 'Shots on target', src: 'shots_on' },
+    { g: 'Attacking', k: 'Goals', src: 'goals' },
     { g: 'Attacking', k: 'xG', d: 2, src: 'xg' },
     { g: 'Attacking', k: 'Dribbles', src: 'dribbles' },
     { g: 'Attacking', k: 'Strikes' },
@@ -38,13 +39,14 @@
     { g: 'Defending', k: 'Interceptions', src: 'interceptions' },
     { g: 'Defending', k: 'Clearances', src: 'clearances' },
     { g: 'Defending', k: 'Saves', src: 'saves' },
+    { g: 'Defending', k: 'Defensive contribution', src: 'def_actions' },
     { g: 'Physical', k: 'Distance covered', u: ' km', d: 2 },
     { g: 'Physical', k: 'Top speed', u: ' km/h', d: 1 },
     { g: 'Physical', k: 'Avg sprint speed', u: ' km/h', d: 1, src: 'sprint_kmh' },
     { g: 'Physical', k: 'Sprints >25 km/h' },
   ];
   /* Per-player numbers from the analytics pass kept with the report (engine.players), besides the player rows */
-  const PLAYER_EXTRA = ['shots', 'shots_on', 'xg', 'tackles', 'interceptions', 'clearances', 'dispossessed', 'dribbles',
+  const PLAYER_EXTRA = ['shots', 'shots_on', 'goals', 'xg', 'tackles', 'interceptions', 'clearances', 'dispossessed', 'dribbles',
     'crosses', 'long_balls', 'long_balls_att', 'box_touches', 'free_kicks', 'corners', 'saves', 'final_third_s', 'on_ball_s', 'sprint_kmh'];
   const GK_CODE = 2;
   const PITCH_L = 105, PITCH_W = 68;

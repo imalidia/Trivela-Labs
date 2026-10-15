@@ -224,11 +224,17 @@ def test_player_heatmaps_split_on_and_off_the_ball():
 # ---------------------------------------------------------------- pitch mapping on a synthetic broadcast camera
 W, H, GTOP = 1280, 720, 90
 
+# A pinhole camera 20 m up, 25 m behind the near touchline, focal length F px, horizon at row V0: the far touchline
+# (93 m away) is at row GTOP and the middle of the picture 60 m away (the engine's CAM_DIST_M)
+CAM_H, CAM_BACK = 20.0, 25.0
+F = (H / 2 - GTOP) / (CAM_H * (1 / 60.0 - 1 / (68.0 + CAM_BACK)))
+V0 = GTOP - F * CAM_H / (68.0 + CAM_BACK)
+
 def project(X, Y, x0, pan):
     """pitch metres -> (foot px x, foot px y, height px) for a camera that rotated `pan` pixels from centring x0"""
-    t = (Y / 68.0) ** (1 / 0.8)
-    fy = GTOP + (H - GTOP) * t
-    h = 30 + 50 * t
+    dist = 68.0 + CAM_BACK - Y
+    fy = V0 + F * CAM_H / dist
+    h = 1.78 * F / dist
     return W / 2 + (X - x0) / (1.78 / h) - pan, fy, h
 
 def synth_log(path, a_defends_left=True, segments=((0, 120, 20, 1150), (130, 250, 85, -570))):
