@@ -160,9 +160,13 @@ def grass_top(gm):
 # TEAM CLASSIFICATION (K-means kit clustering + per-track temporal voting)
 # ----------------------------------------------------------------------------
 LABW = np.array([0.7, 1.3, 1.3], np.float32)
-# A shirt this far from both kits (as a share of the distance between the two kits) is nobody's team: a referee or a
-# keeper. Measured on a Serie A broadcast: outfield players sit within 0.18, officials and keepers at 0.47-0.54
+# A shirt sample this far from both kits (as a share of the distance between the two kits) is "off-kit". Single frames
+# are noisy (shadows, shirt numbers, blur), so a track is only nobody's team when most of its life is off-kit.
+# Measured on a Serie A broadcast: players are off-kit in at most 35% of their samples, the referee in 97%;
+# in a track's first 20 samples a player can briefly reach 60%, so nothing is decided before that
 KIT_OUTLIER = 0.3
+OFF_KIT_SHARE = 0.7
+OFF_KIT_MIN = 20
 ROLE_SHARE = 0.25       # share of a track's detections the detector must call "referee"/"goalkeeper" to make it stick
 ROLE_MIN = 10           # detections seen before that share is trusted
 KIT_DECAY = 0.85        # older kit votes fade, so a track that slid onto another player follows his shirt
@@ -176,6 +180,7 @@ class TeamModel:
         self.centroids = None; self.sep = 1.0
         self.votes = defaultdict(Counter)       # decayed kit votes per track: team_a / team_b / other
         self.nvotes = Counter()                 # kit samples taken per track
+        self.noff = Counter()                   # ...of which off-kit
         self.roles = defaultdict(Counter)       # detector class votes per track: ref / gk / player
         self.settled = {}                       # track -> team its shirt settled on
         self.flipped = False                    # the last label_for() saw a settled track change team
@@ -216,16 +221,14 @@ class TeamModel:
         return out
 
     def nearest(self, f):
+        """(nearest team, off-kit?) for one shirt sample"""
         d = np.linalg.norm((self.centroids - f) * LABW, axis=1)
-        if d.min() > KIT_OUTLIER * self.sep: return "other"
-        return "team_a" if np.argmin(d) == 0 else "team_b"
+        return ("team_a" if np.argmin(d) == 0 else "team_b"), bool(d.min() > KIT_OUTLIER * self.sep)
 
     def quick(self, frame, box):
         if not self.ready: return None
         f = self.feature(frame, np.asarray(box).astype(int))
-        if f is None: return None
-        n = self.nearest(f)
-        return "official" if n == "other" else n
+        return None if f is None else self.nearest(f)[0]
 
     def label_for(self, cid, frame, box, idx, role=None):
         """Team, goalkeeper or official for a track. Roles are decided over the track's whole life, not per frame: the
@@ -233,17 +236,18 @@ class TeamModel:
         recent shirt colour; `flipped` reports a track whose shirt settled on the other team (it slid onto someone else)"""
         c = self.votes[cid]; r = self.roles[cid]; self.flipped = False
         r[role or "player"] += 1
-        if self.nvotes[cid] < 12 or (idx + cid) % KIT_EVERY == 0:
+        if self.nvotes[cid] < OFF_KIT_MIN or (idx + cid) % KIT_EVERY == 0:
             f = self.feature(frame, box)
             if f is not None:
                 if self.ready:
+                    near, off = self.nearest(f)
                     for k in c: c[k] *= KIT_DECAY
-                    c[self.nearest(f)] += 1; self.nvotes[cid] += 1
+                    c[near] += 1; self.nvotes[cid] += 1; self.noff[cid] += off
                 else:
                     self.samples.append(f)
                     if len(self.samples) >= 150: self.fit()
-        n = sum(r.values()); kits = sum(c.values())
-        if self.nvotes[cid] >= 6 and c["other"] * 2 >= kits:     # wears neither kit
+        n = sum(r.values())
+        if self.nvotes[cid] >= OFF_KIT_MIN and self.noff[cid] >= OFF_KIT_SHARE * self.nvotes[cid]:   # wears neither kit
             return "goalkeeper" if r["gk"] > r["ref"] else "official"
         if n >= ROLE_MIN:
             if r["ref"] >= ROLE_SHARE * n: return "official"
@@ -258,7 +262,8 @@ class TeamModel:
 
     def hand_over(self, old, new, team):
         # a split-off track starts with the shirt it has now, not the votes of the player it left
-        self.votes[new] = Counter({team: self.votes[old][team]}); self.nvotes[new] = self.nvotes[old]
+        self.votes[new] = Counter({team: self.votes[old][team]})
+        self.nvotes[new] = self.nvotes[old]; self.noff[new] = self.noff[old]
         self.settled[new] = team
 
 # ----------------------------------------------------------------------------
