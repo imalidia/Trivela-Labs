@@ -170,7 +170,7 @@ OFF_KIT_MIN = 20
 ROLE_SHARE = 0.25       # share of a track's detections the detector must call "referee"/"goalkeeper" to make it stick
 ROLE_MIN = 10           # detections seen before that share is trusted
 KIT_DECAY = 0.85        # older kit votes fade, so a track that slid onto another player follows his shirt
-KIT_EVERY = 8           # frames between kit samples once a track has its first 12
+KIT_EVERY = 4           # frames between kit samples once a track has its first ones: quick to notice a slid track
 KIT_SETTLED = 3.0       # decayed vote weight that makes a team "settled" for a track
 
 class TeamModel:
@@ -683,6 +683,8 @@ TACKLE_M, TACKLE_S = 3.0, 0.7
 LONG_BALL_M = 30.0
 SHOT_RANGE_M = 32.0
 STRIKE_SETTLE_S = 1.5   # a strike waits this long for the kick tracker before it counts as a shot on its own
+STRIKE_FLIGHT_S = 0.6   # ball points after a strike used to see which way it went
+STRIKE_BLIND_M = 22.0   # a strike this close to a goal counts even when the camera loses the ball straight away
 DRIBBLE_M, DRIBBLE_PRESS_M = 5.0, 2.0
 DEAD_BALL_S, DEAD_BALL_M = 1.0, 0.8
 SAVE_WINDOW_S, SAVE_REACH_M = 2.5, 2.5
@@ -882,7 +884,11 @@ class MatchAnalytics:
         self._ball(f, r.get("b"))
         while self.si < len(self.strikes) and self.strikes[self.si][0] <= f:
             self._note_strike(f, *self.strikes[self.si]); self.si += 1
-        while self.pending and f - self.pending[0][0] > STRIKE_SETTLE_S * self.fps:
+        b = r.get("b")
+        if b is not None and not b[2] and self.ball and self.ball[-1][0] == f:
+            for it in self.pending:                                 # the flight after each recent strike
+                if 0 < f - it["f"] <= STRIKE_FLIGHT_S * self.fps: it["pts"].append(self.ball[-1])
+        while self.pending and f - self.pending[0]["f"] > STRIKE_SETTLE_S * self.fps:
             self._strike_shot(self.pending.pop(0))
 
     def _heat(self, g, x, y, team, on):
@@ -1077,14 +1083,22 @@ class MatchAnalytics:
         elif lc is not None and f - lc[2] <= self.fps and lc[0] in self.carry: x, y = self.carry[lc[0]][:2]
         else: return
         g = lc[0] if lc is not None and lc[1] == team and f - lc[2] <= self.fps else -1
-        self.pending.append((sf, team, g, x, y))
+        self.pending.append({"f": sf, "team": team, "g": g, "x": x, "y": y, "pts": []})
 
     def _strike_shot(self, item):
-        sf, team, g, x, y = item
+        """A hard strike near a goal that heads towards it is a shot; away from it, a clearance. Judged on the goal the
+        ball travels to, not on which way the teams attack: on broadcast footage that direction is often guessed wrong"""
+        sf, team, g, x, y = item["f"], item["team"], item["g"], item["x"], item["y"]
         if any(abs(sf - f0) <= STRIKE_SETTLE_S * self.fps for f0 in self.shot_frames): return   # already a shot
-        ax, ay = att(x, y, team)
-        if ax >= PITCH_L - SHOT_RANGE_M:
-            self._shot({"x": x, "y": y, "gk": -1, "f0": sf}, team, g, ax, ay, False, 0.0)
+        end = PITCH_L if x > PITCH_L / 2 else 0.0                 # the goal nearer the strike
+        dist = math.hypot(end - x, PITCH_W / 2 - y)
+        if dist > SHOT_RANGE_M: return
+        pts = item["pts"]
+        if pts:
+            if abs(end - pts[-1][1]) >= abs(end - x) - 2.0: return  # flew away from that goal: a clearance or a pass
+        elif dist > STRIKE_BLIND_M: return
+        ax, ay = (x, y) if end == PITCH_L else (PITCH_L - x, PITCH_W - y)   # in the frame where that goal is at x = 105
+        self._shot({"x": x, "y": y, "gk": -1, "f0": sf}, team, g, ax, ay, False, 0.0)
 
     def result(self, keep):
         t, fps = self.t, self.fps
@@ -1111,7 +1125,7 @@ class MatchAnalytics:
                 "player_heat_size": [PHEAT_NX, PHEAT_NY], "passes": self.passes, "shots": self.shots}
         return {"team": team, "players": players, "maps": maps}
 
-def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=()):
+def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=(), pm_out=None):
     """Two passes over the per-frame log: map pixels to the pitch, then count. keep = player ids to report."""
     pm = PitchMapper(W, H); pm.build(path)
     ma = MatchAnalytics(pm, fps, G, events, gains, team_of, strikes)
@@ -1119,6 +1133,7 @@ def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=()
     ma.finish()
     out = ma.result(keep)
     out["pitch"] = {"estimated": True, "anchored_pct": pm.anchored_pct, "flipped": pm.flip}
+    if pm_out is not None: pm_out.append(pm)     # the pitch estimate, for the tactical radar drawn into the video
     return out
 
 # ----------------------------------------------------------------------------
@@ -1304,13 +1319,17 @@ def draw_possession_bar(frame, poss, kit):
     tw = cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)[0][0]
     cv2.putText(frame, t, (x0 + bw - tw, y0 - 6), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), 1, cv2.LINE_AA)
 
+NUMBERS_PER_TEAM = 19   # each team is numbered 1..19 by screen time; shorter fragments beyond that keep their ring only
+
 def player_numbers(real, team_info, appear):
-    """Shirt-style numbers 1, 2, 3... for the report and the video: team A, then team B, then keepers, each by
-    screen time. Officials get none"""
-    order = {"team_a": 0, "team_b": 1, "goalkeeper": 2}
-    ids = [c for c in real if team_info.get(c) in order]
-    ids.sort(key=lambda c: (order[team_info[c]], -appear[c], c))
-    return {c: i + 1 for i, c in enumerate(ids)}
+    """Numbers for the report and the video: each team 1, 2, 3... by screen time (its colour tells the teams apart),
+    goalkeepers "GK". Officials get none"""
+    nums = {}
+    for grp in ("team_a", "team_b"):
+        ids = sorted((c for c in real if team_info.get(c) == grp), key=lambda c: (-appear[c], c))
+        nums.update({c: i + 1 for i, c in enumerate(ids[:NUMBERS_PER_TEAM])})
+    nums.update({c: "GK" for c in real if team_info.get(c) == "goalkeeper"})
+    return nums
 
 def draw_number(frame, b, n, color, carrier=False):
     x1, y1, x2, _ = b; H = frame.shape[0]
@@ -1324,11 +1343,40 @@ def draw_number(frame, b, n, color, carrier=False):
     ink = (0, 0, 0) if sum(color) > 450 else (255, 255, 255)             # dark text on light kits
     cv2.putText(frame, t, (x0 + px, by - py), cv2.FONT_HERSHEY_DUPLEX, fs, ink, th, cv2.LINE_AA)
 
-def burn_numbers(video, log_path, G, nums, kit, W, H, fps, audio_src, on_progress=None):
+RADAR_W = 0.24          # tactical radar width, as a share of the video width
+RADAR_EMA = 0.35        # smoothing of radar dots: the pitch estimate jitters frame to frame
+
+def draw_radar(frame, dots, ball, kit):
+    """2D tactical view in the bottom-right corner. dots: [(number or None, label, x m, y m)], ball: (x m, y m) or None"""
+    H, W = frame.shape[:2]
+    rw = int(W * RADAR_W); rh = int(rw * PITCH_W / PITCH_L); m = max(8, W // 120)
+    x0, y0 = W - rw - m, H - rh - m - int(H * 0.06)               # clear of the possession bar
+    roi = frame[y0:y0 + rh, x0:x0 + rw]
+    bg = np.empty_like(roi); bg[:] = (40, 90, 30)
+    cv2.addWeighted(bg, 0.78, roi, 0.22, 0, roi)
+    P = lambda x, y: (x0 + int(x / PITCH_L * (rw - 1)), y0 + int(y / PITCH_W * (rh - 1)))
+    ln = (225, 235, 225); t = 1
+    cv2.rectangle(frame, P(0, 0), P(PITCH_L, PITCH_W), ln, t)
+    cv2.line(frame, P(PITCH_L / 2, 0), P(PITCH_L / 2, PITCH_W), ln, t)
+    cv2.circle(frame, P(PITCH_L / 2, PITCH_W / 2), int(9.15 / PITCH_L * rw), ln, t, cv2.LINE_AA)
+    for gx in (0.0, PITCH_L - BOX_D):
+        cv2.rectangle(frame, P(gx, BOX_Y0), P(gx + BOX_D, BOX_Y1), ln, t)
+    r = max(3, rw // 60); fs = max(0.28, r / 14.0)
+    for n, lab, x, y in dots:
+        c = P(x, y); col = kit.get(lab, (200, 200, 200))
+        cv2.circle(frame, c, r + 1, (0, 0, 0), -1, cv2.LINE_AA); cv2.circle(frame, c, r, col, -1, cv2.LINE_AA)
+        if n is not None and r >= 5:
+            tx = str(n); (tw, th_), _ = cv2.getTextSize(tx, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)
+            cv2.putText(frame, tx, (c[0] - tw // 2, c[1] + th_ // 2), cv2.FONT_HERSHEY_SIMPLEX, fs,
+                        (0, 0, 0) if sum(col) > 450 else (255, 255, 255), 1, cv2.LINE_AA)
+    if ball is not None:
+        c = P(*ball); cv2.circle(frame, c, max(2, r - 1), (0, 0, 0), -1, cv2.LINE_AA); cv2.circle(frame, c, max(1, r - 2), (255, 255, 255), -1, cv2.LINE_AA)
+
+def burn_numbers(video, log_path, G, nums, kit, W, H, fps, audio_src, on_progress=None, pm=None):
     """Second pass over the finished video: the final player numbers are only known after re-identification, so
     they are drawn here, from the frame log, and the video is replaced"""
     lab_of = {v: k for k, v in TEAM_CODE.items()}
-    tmp = video + ".numbers.mp4"
+    tmp = video + ".numbers.mp4"; smooth = {}
     cap = cv2.VideoCapture(video); enc = Encoder(tmp, W, H, fps, audio_src)
     total = max(1, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
     try:
@@ -1342,9 +1390,18 @@ def burn_numbers(video, log_path, G, nums, kit, W, H, fps, audio_src, on_progres
                     if int(fi) > idx: break
                     if int(fi) == idx:
                         r_ = json.loads(body); car = G(r_["c"]) if r_["c"] >= 0 else -1
+                        dots = []
                         for c, x1, y1, x2, y2, code in r_["p"]:
-                            n = nums.get(G(c))
-                            if n: draw_number(frame, (x1, y1, x2, y2), n, kit[lab_of.get(code, "team_a")], G(c) == car)
+                            n = nums.get(G(c)); lab = lab_of.get(code, "team_a")
+                            if n: draw_number(frame, (x1, y1, x2, y2), n, kit[lab], G(c) == car)
+                            if pm is not None and lab != "official" and idx in pm.frame:
+                                x, y = pm.to_pitch(idx, (x1 + x2) / 2.0, y2); q = smooth.get(G(c))
+                                if q is not None and idx - q[2] <= 3:
+                                    x, y = q[0] + RADAR_EMA * (x - q[0]), q[1] + RADAR_EMA * (y - q[1])
+                                smooth[G(c)] = (x, y, idx); dots.append((n, lab, x, y))
+                        if pm is not None and idx in pm.frame:
+                            b_ = r_.get("b")
+                            draw_radar(frame, dots, pm.to_pitch(idx, b_[0], b_[1]) if b_ else None, kit)
                     nxt = fin.readline()
                 enc.write(frame); idx += 1
                 if on_progress and idx % 250 == 0: on_progress(idx / total)
@@ -1721,11 +1778,11 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                           "sprints": ph.get("spr", 0), "secs": round(appear[c] / fps, 1),
                           "sprint_kmh": round(ph["pk_sum"] / ph["pk_n"] * 3.6, 1) if ph.get("pk_n") else 0.0}
         J.update(phase="Mapping the pitch & counting match events")
-        ma = None
+        ma = None; pm_box = []
         try:
             ma = match_analytics(tmp_path, G, fps, W, H, poss.evlog, poss.events,
                                  {c: TEAM_CODE[l_] for c, l_ in team_info.items()}, real,
-                                 [[e_[0], e_[3]] for e_ in xev if e_[1] == "strike"])
+                                 [[e_[0], e_[3]] for e_ in xev if e_[1] == "strike"], pm_box)
             for c, row in ma["players"].items(): pl[str(c)].update(row)
         except Exception:
             import traceback; traceback.print_exc()
@@ -1784,7 +1841,8 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             J.update(phase="Adding player numbers to the video")
             try:
                 burn_numbers(out_path, tmp_path, G, nums, kit, W, H, fps, src,
-                             lambda q: J.update(phase=f"Adding player numbers to the video ({q * 100:.0f}%)"))
+                             lambda q: J.update(phase=f"Adding player numbers to the video ({q * 100:.0f}%)"),
+                             pm_box[0] if pm_box else None)
             except Exception:
                 import traceback; traceback.print_exc()
                 print("Could not add player numbers; the video keeps its rings only.")

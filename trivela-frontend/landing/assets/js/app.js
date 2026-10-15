@@ -498,7 +498,7 @@ const sampleRow = p => ({ id: p.id, team: p.team, badge: p.jersey, name: `${p.po
 const gridsOf = x => ({ all: x.heat, on: x.heat_on, off: x.heat_off });
 /* A model-made keeper row (engine.keepers) -> a stats-view row. Older reports have none */
 const keeperRow = ({ player_key, team, distance, top_speed, accuracy, jersey, pos, intensity, heat, heat_on, heat_off, ...rest }) =>
-  ({ id: player_key, team, badge: 'GK', name: jersey ? `Goalkeeper · Player ${jersey}` : `Goalkeeper · Track ${String(player_key).slice(1)}`, heat: gridsOf({ heat, heat_on, heat_off }),
+  ({ id: player_key, team, badge: 'GK', name: jersey ? 'Goalkeeper' : `Goalkeeper · Track ${String(player_key).slice(1)}`, heat: gridsOf({ heat, heat_on, heat_off }),
     v: { distance, top: top_speed, acc: accuracy, ...rest } });
 function svModel(rep) {
   const m = match(), color = { home: teamColor('home'), away: teamColor('away') };

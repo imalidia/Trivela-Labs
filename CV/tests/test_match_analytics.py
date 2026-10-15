@@ -151,6 +151,23 @@ def test_hard_strike_from_deep_is_not_a_shot():
     _, res = run_flat(_struck_then_lost(40, 30), team_of=TEAM, keep=[1], strikes=[[10, 0]])
     assert res["team"]["shots_a"] == 0
 
+def _struck_and_flew(x, y, to, carrier=1, team=0):
+    """the carrier hits the ball at frame 10; it is seen flying to `to` for a few frames, then lost"""
+    persons = [(carrier, x, y, team), (11, 60, 30, 1)]
+    frames = [(f, persons, carrier, (x, y)) for f in range(0, 11)]
+    for i in range(1, 6):
+        frames.append((10 + i, persons, -1, (x + (to[0] - x) * i / 5, y + (to[1] - y) * i / 5)))
+    return frames + [(f, persons, -1, None) for f in range(16, 80)]
+
+def test_strike_flying_away_from_goal_is_not_a_shot():
+    _, res = run_flat(_struck_and_flew(90, 34, (70, 34)), team_of=TEAM, strikes=[[10, 0]])
+    assert res["team"]["shots_a"] == 0
+
+def test_strike_towards_either_goal_is_a_shot_whichever_way_teams_attack():
+    # team B (which attacks towards x = 0) shoots at the x = 105 goal: the pitch direction was guessed wrong
+    _, res = run_flat(_struck_and_flew(88, 30, (100, 33), carrier=11, team=1), team_of=TEAM, keep=[11], strikes=[[10, 1]])
+    assert res["team"]["shots_b"] == 1 and res["players"][11]["shots"] == 1
+
 def test_strike_the_kick_tracker_already_counted_is_one_shot():
     persons = [(1, 88, 34, 0), (99, 103, 34, 2), (11, 80, 30, 1)]
     frames = _kick_frames((88, 34), (103.5, 34.5), 1, persons)
