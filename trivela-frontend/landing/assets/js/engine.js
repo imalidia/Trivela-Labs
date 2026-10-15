@@ -98,7 +98,7 @@
       .map(([x0, y0, x1, y1, t]) => [...pt(x0, y0), ...pt(x1, y1), side(t)]);
     const shots = (Array.isArray(maps.shots) ? maps.shots : [])
       .filter(s => Array.isArray(s) && side(s[2]))
-      .map(([x, y, t, on, xg, kmh]) => { const [px, py] = pt(x, y); return { x: px, y: py, team: side(t), on: !!on, xg: fix(xg, 2), kmh: num(kmh) }; });
+      .map(([x, y, t, on, xg, kmh, goal]) => { const [px, py] = pt(x, y); return { x: px, y: py, team: side(t), on: !!on || !!goal, goal: !!goal, xg: fix(xg, 2), kmh: num(kmh) }; });
     return {
       size, heat: { home: heatOf(home), away: heatOf(away) }, passes, shots,
       player_size: Array.isArray(maps.player_heat_size) && maps.player_heat_size.length === 2 ? maps.player_heat_size.map(num) : [12, 8],

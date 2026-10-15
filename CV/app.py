@@ -1227,7 +1227,9 @@ class MatchAnalytics:
             self.bump("shots_on", team, g)
             if k["gk"] >= 0: self.bump("saves", 1 - team, k["gk"])
             else: self.saves.append((k["f0"], team))
-        self.shots.append([round(k["x"], 1), round(k["y"], 1), team, 1 if on else 0, round(xg, 2), round(v)])
+        # plotted where its team attacks: team 0 towards x = 105, team 1 towards x = 0, whichever end it was at in the video
+        px, py = (ox, oy) if team == 0 else (PITCH_L - ox, PITCH_W - oy)
+        self.shots.append([round(px, 1), round(py, 1), team, 1 if on else 0, round(xg, 2), round(v)])
 
     def _restart(self, k):
         x, y = k["x"], k["y"]

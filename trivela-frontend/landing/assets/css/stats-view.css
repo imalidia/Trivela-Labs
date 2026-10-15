@@ -53,6 +53,9 @@
 .sv-legend span { display:inline-flex; align-items:center; gap:6px }
 .sv-legend i { width:10px; height:10px; border-radius:50%; border:1.5px solid var(--fg-2) }
 .sv-legend i.f { background:var(--fg-2) }
+.sv-legend i.g { background:#fff; box-shadow:inset 0 0 0 2.5px var(--fg-2) }
+.sv-score { display:flex; align-items:center; gap:8px; font-size:15px; margin:2px 0 10px }
+.sv-score b { font-size:20px; padding:0 4px }
 
 /* Stat cards: an even two-column grid, so cards side by side share their top and bottom edges */
 .sv-groups { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:20px }

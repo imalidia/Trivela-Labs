@@ -106,13 +106,15 @@
 
   /* ---------- Shot map: every shot on one pitch, step through them one by one ---------- */
   function shotCard(model, st, pitch) {
-    const head = n => `<div class="sv-shot-head"><h3 class="sv-title">Shot map</h3>${n}</div>`;
+    const g = has(model, 'Goals') ? model.stats.Goals : null;
+    const score = g ? `<div class="sv-score num"><span class="sv-sw" style="background:${model.color.home}"></span>${esc(model.home)} <b>${+g[0] || 0} – ${+g[1] || 0}</b> ${esc(model.away)}<span class="sv-sw" style="background:${model.color.away}"></span></div>` : '';
+    const head = n => `<div class="sv-shot-head"><h3 class="sv-title">Shot map</h3>${n}</div>${score}`;
     if (!model.shots) return `<section class="sv-card sv-shotcard">${head('')}${offPitch(pitch, 'Shot map', 'Shots can\'t be placed for this clip because the model couldn\'t map the pitch. Wide-angle footage works best.')}</section>`;
     if (!model.shots.length) return `<section class="sv-card sv-shotcard">${head('')}<div class="sv-pitch">${pitch('', 'Shot map')}</div><p class="sv-empty">No shots were mapped in this clip.</p></section>`;
     const shots = model.shots, i = Math.min(Math.max(0, st.shot || 0), shots.length - 1), s = shots[i];
     const dot = (x, j) => {
       const c = model.color[x.team], r = (1.1 + Math.sqrt(Math.max(0, x.xg || 0)) * 2.6).toFixed(2), sel = j === i, full = x.on || x.goal;
-      return `<g class="sv-dot${sel ? ' sel' : ''}" data-sv-shot="${j}">${sel ? `<circle cx="${x.x}" cy="${x.y}" r="${(+r + 1.6).toFixed(2)}" fill="none" stroke="var(--fg)" stroke-width=".45"/>` : ''}<circle cx="${x.x}" cy="${x.y}" r="${r}" fill="${full ? c : 'var(--surface-2)'}" fill-opacity="${full ? .9 : 1}" stroke="${c}" stroke-width=".6"/>${x.goal ? `<circle cx="${x.x}" cy="${x.y}" r=".9" fill="#fff"/>` : ''}</g>`;
+      return `<g class="sv-dot${sel ? ' sel' : ''}" data-sv-shot="${j}">${sel ? `<circle cx="${x.x}" cy="${x.y}" r="${(+r + 1.6).toFixed(2)}" fill="none" stroke="var(--fg)" stroke-width=".45"/>` : ''}<circle cx="${x.x}" cy="${x.y}" r="${r}" fill="${full ? c : 'var(--surface-2)'}" fill-opacity="${full ? .9 : 1}" stroke="${c}" stroke-width=".6"/>${x.goal ? `<circle cx="${x.x}" cy="${x.y}" r="${(r * .45).toFixed(2)}" fill="#fff" stroke="#111" stroke-width=".35"/>` : ''}</g>`;
     };
     const ordered = shots.map((x, j) => [x, j]).sort((a, b) => (a[1] === i) - (b[1] === i));   // the selected shot is drawn on top
     const team = s.team === 'home' ? model.home : model.away;
@@ -122,7 +124,7 @@
       <div class="sv-shot-who"><span class="sv-sw" style="background:${model.color[s.team]}"></span><b>${esc(team)}</b></div>
       <dl class="sv-shot-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd class="num">${esc(v)}</dd></div>`).join('')}</dl>
       <div class="sv-pitch">${pitch(ordered.map(([x, j]) => dot(x, j)).join(''), 'Shot map')}</div>
-      <div class="sv-legend"><span><i class="f"></i>On target</span><span><i></i>Off target</span><span>Bigger = higher xG</span></div></section>`;
+      <div class="sv-legend"><span><i class="f"></i>On target</span><span><i></i>Off target</span><span><i class="g"></i>Goal</span><span>Bigger = higher xG</span></div></section>`;
   }
 
   /* ---------- Attacking zones: where each side had the ball in the opponent's half, by lane ---------- */
