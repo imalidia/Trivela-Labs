@@ -29,7 +29,21 @@ jobs:
       - run: pip install pytest numpy opencv-python-headless scipy fastapi httpx python-multipart pyyaml modal
       - run: python -m pytest tests -q
         working-directory: CV
-      - run: modal deploy CV/modal_app.py
+      # the error (or the engine's address) is also shown as an annotation on the run's summary page
+      - name: modal deploy
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          NO_COLOR: "1"
+          TERM: dumb
+        run: |
+          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
+            echo "::error title=modal deploy::The repository secrets MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are not set"; exit 1
+          fi
+          if ! modal deploy CV/modal_app.py > deploy.log 2>&1; then
+            cat deploy.log
+            echo "::error title=modal deploy failed::$(tail -n 30 deploy.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          fi
+          cat deploy.log
+          grep -oE 'https://[a-z0-9-]+\.modal\.run' deploy.log | sort -u | sed 's/^/::notice title=Engine address::/'
