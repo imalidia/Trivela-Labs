@@ -7,6 +7,7 @@
   const STORE_KEY = 'trivela.engineUrl';
   const CHUNK_SIZE = 4 * 1024 * 1024;   // matches the engine's own uploader; small enough for any proxy's request cap (Cloudflare's is 100 MB)
   const CHUNK_RETRIES = 4;
+  const UPLOAD_PARALLEL = 4;            // chunks in flight at once
   const MIN_PLAYER_SECS = 3;            // shorter tracks are fragments, not players
   const MAX_PLAYERS = 40;
   const MAX_EVENTS = 3000;              // keeps the saved log small; a full match logs well under this
@@ -257,23 +258,32 @@
   const cancel = base => call(base, '/api/cancel', { method: 'POST' });
   const videoUrl = base => `${base}/api/video-stream/tactical_output.mp4`;
 
-  /* Chunked upload with per-chunk retries. onProgress(0..1). signal: AbortSignal to stop */
+  /* Chunked upload with per-chunk retries. onProgress(0..1). signal: AbortSignal to stop.
+     Chunk 0 goes first (the engine starts a fresh file on it), then UPLOAD_PARALLEL chunks travel at once: each one
+     writes to its own byte offset, so order doesn't matter, and the link stays busy instead of waiting on round trips */
   async function upload(base, file, onProgress, signal) {
     const total = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
-    for (let i = 0; i < total; i++) {
+    let done = 0;
+    const send = async i => {
       const blob = file.slice(i * CHUNK_SIZE, Math.min(file.size, (i + 1) * CHUNK_SIZE));
       for (let attempt = 1; ; attempt++) {
         if (signal && signal.aborted) throw Object.assign(new Error('Upload cancelled'), { name: 'AbortError' });
         try {
-          await call(base, '/api/upload-chunk', { method: 'POST', signal, body: form({ chunk: blob, fileName: file.name, chunkIndex: i, totalChunks: total }) });
+          await call(base, '/api/upload-chunk', { method: 'POST', signal,
+            body: form({ chunk: blob, fileName: file.name, chunkIndex: i, totalChunks: total, offset: i * CHUNK_SIZE }) });
           break;
         } catch (err) {
           if (err.name === 'AbortError' || err.status === 409 || err.status === 400 || attempt >= CHUNK_RETRIES) throw err;
           await new Promise(r => setTimeout(r, 800 * attempt));
         }
       }
-      if (onProgress) onProgress((i + 1) / total);
-    }
+      done++;
+      if (onProgress) onProgress(done / total);
+    };
+    await send(0);
+    let next = 1;
+    const worker = async () => { while (next < total) await send(next++); };
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, total - 1) }, worker));
   }
 
   /* mode: fast | balanced | ultra. Graphics are burned into the video, which is what the report's Video tab plays */

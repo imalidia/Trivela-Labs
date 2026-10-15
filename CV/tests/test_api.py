@@ -68,3 +68,17 @@ def test_pages(client):
     assert "<html" in client.get("/").text.lower()
     assert client.get("/trivela", follow_redirects=False).headers["location"] == "/web/"
     assert client.get("/docs").status_code == 404
+
+def test_rebuilds_an_upload_sent_out_of_order(client):
+    # the site sends chunk 0 first, then several chunks at once, each with its byte offset
+    size = 4
+    data = bytes(range(256)) * 64                       # 16 KB of varied bytes
+    parts = [data[i:i + size * 1024] for i in range(0, len(data), size * 1024)]
+    send = lambda i: client.post("/api/upload-chunk", files={"chunk": ("c", parts[i])},
+                                 data={"fileName": "m.mp4", "chunkIndex": i, "totalChunks": len(parts), "offset": i * size * 1024})
+    assert send(0).status_code == 200
+    for i in (3, 1, 2):
+        assert send(i).status_code == 200
+    assert client.get("/api/status").json()["status"] == "uploaded"
+    from app import UPLOAD_DIR
+    assert (UPLOAD_DIR / "source_match.mp4").read_bytes() == data
