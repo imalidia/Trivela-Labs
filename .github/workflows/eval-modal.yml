@@ -1,6 +1,7 @@
 name: Engine eval on Modal
 
-# Runs CV/modal_eval.py when a commit message on the working branch contains [eval] or [eval rerun=<mode> times=<s,s>].
+# Runs CV/modal_eval.py when a commit message on the working branch contains [eval] or [eval rerun=<mode> times=<s,s>]
+# ("export" in the tag also returns the raw test clip and the detector weights).
 # Results go to the eval-data branch (runs/<commit>/): summary.json, tracking data, contact sheets, frames.
 on:
   push:
@@ -34,7 +35,8 @@ jobs:
           mode=$(printf '%s' "$tag" | grep -oE 'rerun=[a-z]+' | cut -d= -f2 || true)
           times=$(printf '%s' "$tag" | grep -oE 'times=[0-9.,]+' | cut -d= -f2 || true)
           res=$(printf '%s' "$tag" | grep -oE 'res=[0-9a-z]+' | cut -d= -f2 || true)
-          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" --out eval-out > run.log 2>&1; then
+          export_flag=$(printf '%s' "$tag" | grep -q 'export' && echo --export || true)
+          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" $export_flag --out eval-out > run.log 2>&1; then
             cat run.log
             echo "::error title=modal eval failed::$(tail -n 30 run.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             exit 1
