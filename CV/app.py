@@ -1,4 +1,4 @@
-import os, re, cv2, time, json, math, gzip, shutil, threading, queue, subprocess, asyncio, urllib.request, urllib.error
+import os, re, cv2, time, json, math, gzip, shutil, inspect, threading, queue, subprocess, asyncio, urllib.request, urllib.error
 import numpy as np
 import torch
 import yaml
@@ -275,17 +275,24 @@ class SimpleTracker:
         self.t = [t for t in self.t if t["miss"] <= 40]
         return np.array(rows, np.float32) if rows else np.zeros((0, 8), np.float32)
 
+def build_tracker(cls, cfg, fr):
+    # Older Ultralytics: Tracker(args, frame_rate) scales track_buffer by frame_rate/30 itself.
+    # Newer (8.4+): Tracker(args) reads track_buffer as frames, so scale it here to keep the same lost-track time.
+    if "frame_rate" in inspect.signature(cls.__init__).parameters:
+        return cls(IterableSimpleNamespace(**cfg), frame_rate=fr)
+    return cls(IterableSimpleNamespace(**{**cfg, "track_buffer": max(1, int(fr / 30 * cfg["track_buffer"]))}))
+
 def make_tracker(fps):
-    args = IterableSimpleNamespace(**yaml.safe_load(TRACKER_YAML.read_text()))
+    cfg = yaml.safe_load(TRACKER_YAML.read_text())
     fr = max(1, int(round(fps)))
     try:
         from ultralytics.trackers.bot_sort import BOTSORT
-        return BOTSORT(args, frame_rate=fr), "BoT-SORT + camera-motion compensation"
+        return build_tracker(BOTSORT, cfg, fr), "BoT-SORT + camera-motion compensation"
     except Exception as e:
         print("BoT-SORT unavailable:", e)
     try:
         from ultralytics.trackers.byte_tracker import BYTETracker
-        return BYTETracker(args, frame_rate=fr), "ByteTrack"
+        return build_tracker(BYTETracker, cfg, fr), "ByteTrack"
     except Exception as e:
         print("ByteTrack unavailable:", e)
     return SimpleTracker(), "Built-in IoU tracker"
@@ -1126,6 +1133,17 @@ def pick_encoder():
     _ENC["args"], _ENC["name"] = args, name
     return args, name
 
+def to_h264(src, dst, height=0):
+    """Re-encodes a video this OpenCV build can't decode (AV1/VP9, as YouTube serves) to H.264. The system ffmpeg has
+    the software decoders; encoding uses NVENC when the GPU has it. height > 0 also scales down to that height."""
+    args, _ = pick_encoder()
+    vf = ["-vf", f"scale=-2:{even(height)}"] if height else []
+    r = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, *vf, *args, "-c:a", "aac", "-b:a", "128k",
+                        "-movflags", "+faststart", dst], capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(dst):
+        raise RuntimeError("This video's format can't be read, and converting it failed: " + (r.stderr or "").strip()[-300:])
+    return dst
+
 class Encoder:
     # frames are handed to a writer thread, so encoding overlaps with detection and tracking
     def __init__(self, path, w, h, fps, audio_src):
@@ -1219,8 +1237,9 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
     out_path = str(PROCESSED_DIR / "tactical_output.mp4")
     meta_path = str(PROCESSED_DIR / "tactical_metadata.json.gz")
     fixed = str(UPLOAD_DIR / "fixed_input.mp4")
+    converted = str(UPLOAD_DIR / "h264_input.mp4")
     summ_path = str(PROCESSED_DIR / "summary.json")
-    for p in [out_path, meta_path, fixed, summ_path]:
+    for p in [out_path, meta_path, fixed, converted, summ_path]:
         if os.path.exists(p):
             try: os.remove(p)
             except Exception: pass
@@ -1235,6 +1254,18 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             src = fixed; cap = cv2.VideoCapture(src)
         if not cap.isOpened():
             raise RuntimeError("Could not open the video file.")
+        # Opens but no frame decodes: a codec this OpenCV build lacks (AV1/VP9 from YouTube). Convert it to H.264 once,
+        # straight to the analysis height so the conversion and everything after it handle fewer pixels
+        decodes = cap.read()[0]
+        src_h0 = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)); cap.release()
+        if not decodes:
+            J.update(phase="Converting the video to H.264 (its format can't be read directly)")
+            th0 = RES_H.get(res_key, 0)
+            src = to_h264(src, converted, th0 if th0 and src_h0 > th0 else 0)
+        cap = cv2.VideoCapture(src)   # reopened either way, so reading starts again at frame 0
+        if not cap.isOpened() or not cap.read()[0]:
+            raise RuntimeError("Could not read any frames from the video.")
+        cap.release(); cap = cv2.VideoCapture(src)
 
         src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
