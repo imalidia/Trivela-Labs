@@ -95,5 +95,5 @@ Then open http://localhost:5600 and press **Ask AI coach** on the sample match.
 
 ## Not done yet
 
-- Player names: players are "Track 12" until the app lets users name them.
+- Player names: players are "ID 12" (the number shown above them in the video) until the app lets users name them.
 - The maps (heat, pass, shot) are pictures; the coach points to them but cannot read them.

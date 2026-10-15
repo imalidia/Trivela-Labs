@@ -27,7 +27,7 @@
   let matches = [], current = null, open = false, closeTimer = null;
   const state = {};                        // matchId -> { log: [{ who, html }], chatId, busy, error }
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const label = id => (/^t\d+$/.test(id) ? `Track ${id.slice(1)}` : id);
+  const label = id => (/^t\d+$/.test(id) ? `ID ${id.slice(1)}` : id);
   const of = id => state[id] || (state[id] = { log: [], chatId: null, busy: false, error: null });
   const $ = id => document.getElementById(id);
   const typing = el => el && (/^(input|textarea|select)$/i.test(el.tagName) || el.isContentEditable);

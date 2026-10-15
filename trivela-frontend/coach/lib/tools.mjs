@@ -14,7 +14,7 @@ export const TOOLS = [
     description: 'Home vs away numbers for this match, with who leads and by how much. Pass a stat name for one row, or null for every stat this match has.',
     input_schema: schema({ stat: nullable('string') }) },
   { name: 'get_player', strict: true,
-    description: 'Everything measured for one tracked player: totals, minutes on screen, rank within their team and plain tags. Accepts "t12", "Track 12" or "12".',
+    description: 'Everything measured for one tracked player: totals, minutes on screen, rank within their team and plain tags. Accepts "t12", "ID 12", "Track 12" or "12".',
     input_schema: schema({ player: { type: 'string' } }) },
   { name: 'rank_players', strict: true,
     description: 'Players ranked by one metric (totals). team null = both teams. Tracks under 3 minutes on screen are left out of "least".',
@@ -39,7 +39,7 @@ export const TOOLS = [
 
 const json = v => JSON.stringify(v);
 const findPlayer = (facts, raw) => {
-  const id = 't' + String(raw).replace(/^\s*(track|t)\s*/i, '').trim();
+  const id = 't' + String(raw).replace(/^\s*(track|id|t|#)\s*/i, '').trim();
   return facts.players.find(p => p.id === id.toLowerCase());
 };
 const named = (facts, p) => ({ ...p, team: facts.teams[p.team] || p.team, side: p.team });
