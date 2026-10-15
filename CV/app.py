@@ -61,6 +61,7 @@ MODES = {
 RES_H = {"720p": 720, "1080p": 1080, "1440p": 1440, "source": 0}
 BALL_MIN_CONF = 0.10
 DET_CONF = 0.10
+PERSON_MIN_CONF = 0.12   # people boxes passed to the tracker (it starts tracks only from new_track_thresh up)
 SC = 0.5            # scale of the grass-mask working image
 WIDE_MIN = 0.12     # minimum grass ratio to treat a shot as a wide tactical view
 MIN_TRACK_LEN = 25  # frames a track must live to be listed as a real player
@@ -150,6 +151,28 @@ def on_turf(gm, b):
     fx1 = max(0, int(x1 - 0.1 * w)); fx2 = min(gm.shape[1], x2 + int(0.1 * w))
     p = gm[fy1:fy2, fx1:fx2]
     return p.size > 0 and (np.count_nonzero(p) / p.size) >= 0.20
+
+def drop_part_boxes(xyxy, conf, keep):
+    """The detector often adds a second, smaller box on part of a player (his upper body, or legs). Such a box lies
+    almost entirely inside a stronger one and ends at about the same feet row or head row: keep only the stronger."""
+    order = sorted(keep, key=lambda i: -float(conf[i])); out = []
+    for i in order:
+        a = xyxy[i]; aa = max(1.0, (a[2] - a[0]) * (a[3] - a[1])); h = max(1.0, a[3] - a[1])
+        dup = False
+        for j in out:
+            b = xyxy[j]
+            ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0])); iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+            if ix * iy / aa > 0.85 and (abs(a[3] - b[3]) < 0.2 * h or abs(a[1] - b[1]) < 0.2 * h): dup = True; break
+        if not dup: out.append(i)
+    return sorted(out)
+
+def ball_over_pitch(gm, x, y, H):
+    """True when there is turf at or just below the ball in the image: on the pitch or in the air above it. Off it
+    (stands, boards, benches, the scoreboard) the detector's 'balls' are heads, lamps and logos"""
+    xs, ys = int(x * SC), int(y * SC)
+    if not (0 <= xs < gm.shape[1] and 0 <= ys < gm.shape[0]): return False
+    col = gm[ys:min(gm.shape[0], ys + int(0.12 * H * SC) + 2), max(0, xs - 3):xs + 4]
+    return col.size > 0 and np.count_nonzero(col) / col.size >= 0.25
 
 def grass_top(gm):
     # first image row that is mostly turf: roughly the far touchline in a wide shot
@@ -270,10 +293,12 @@ class TeamModel:
 # TRACKING HELPERS
 # ----------------------------------------------------------------------------
 TRACKER_YAML = BASE_DIR / "botsort_football.yaml"
+# Thresholds measured on broadcast footage: a keeper in front of the net or a half-hidden player in a crowded box is
+# often detected at 0.30-0.45, so a new track must start below that; weaker boxes (0.12+) only extend existing tracks
 TRACKER_YAML.write_text("""tracker_type: botsort
-track_high_thresh: 0.35
-track_low_thresh: 0.10
-new_track_thresh: 0.45
+track_high_thresh: 0.30
+track_low_thresh: 0.12
+new_track_thresh: 0.30
 track_buffer: 150
 match_thresh: 0.80
 fuse_score: True
@@ -555,8 +580,14 @@ def reid_cluster(items, group):
         confs.append(int(round(c_)))
     return assign, cents, confs
 
+BALL_SHOW_LOST = 8      # frames a lost ball is still drawn where the filter predicts it
+BALL_REACQ = 4          # after this many frames without the ball, it is found again anywhere, not near the prediction
+BALL_RESET = 14
+
 class BallTracker:
-    """Kalman-filtered ball with gating, re-acquisition and gap interpolation."""
+    """Kalman-filtered ball with gating and re-acquisition. cands: (x, y, conf, over the pitch). A candidate off the
+    pitch (stands, boards) can only continue a flight close to where the filter expects the ball, never start one:
+    otherwise, while a fast ball is blurred and missed, the search area grows and a 'ball' in the crowd takes over."""
     def __init__(self):
         k = cv2.KalmanFilter(4, 2)
         k.transitionMatrix = np.array([[1,0,1,0],[0,1,0,1],[0,0,1,0],[0,0,0,1]], np.float32)
@@ -570,21 +601,22 @@ class BallTracker:
         pred = None
         if self.init:
             p = self.kf.predict(); pred = (float(p[0, 0]), float(p[1, 0]))
-        pick = None
+        pick = None; fresh = pred is None or self.lost > BALL_REACQ
         if cands:
-            if pred is None:
-                c = max(cands, key=lambda t: t[2])
-                if c[2] >= 0.25: pick = c
+            if fresh:
+                ok = [c for c in cands if c[3] and c[2] >= 0.25]
+                if ok: pick = max(ok, key=lambda t: t[2])
             else:
-                gate = min(0.30 * W, max(45.0, 0.05 * W * (1 + 0.6 * self.lost)))
+                gate = min(0.15 * W, 0.035 * W * (1 + 0.7 * self.lost))
                 bs = -1e9
                 for c in cands:
                     d = math.hypot(c[0] - pred[0], c[1] - pred[1])
-                    if d <= gate or c[2] >= 0.6:
+                    if not c[3] and d > 0.5 * gate: continue
+                    if d <= gate or (c[3] and c[2] >= 0.6):
                         s = c[2] - 0.8 * d / gate
                         if s > bs: bs, pick = s, c
         if pick is not None:
-            if not self.init:
+            if fresh:
                 self.kf.statePost = np.array([[pick[0]], [pick[1]], [0], [0]], np.float32)
                 self.kf.errorCovPost = np.eye(4, dtype=np.float32) * 10
                 self.init = True
@@ -594,9 +626,10 @@ class BallTracker:
             out = (float(st[0, 0]), float(st[1, 0]), float(pick[2]), False)
         elif self.init:
             self.lost += 1
-            if self.lost > 14:
+            if self.lost > BALL_RESET:
                 self.reset(); return None
             self.kf.statePost = self.kf.statePre.copy(); self.kf.errorCovPost = self.kf.errorCovPre.copy()
+            if self.lost > BALL_SHOW_LOST: return None
             out = (pred[0], pred[1], 0.0, True)
         else:
             return None
@@ -1183,7 +1216,7 @@ class DetectorThread:
         try:
             cuts = CutDetector(); idx = -1; last_det = -10**9; prev_wide = False; pend = []; n_need = 0
             def flush():
-                todo = [p for p in pend if p["need"]]
+                todo = [p for p in pend if p["det"]]
                 if todo:
                     res = self.run_batch([p["frame"] for p in todo])
                     for p, r in zip(todo, res): p["bn"] = r.boxes.cpu().numpy()
@@ -1196,11 +1229,13 @@ class DetectorThread:
                 if idx % 240 == 0: self.grass.calibrate(fr)
                 gm = self.grass.mask(self.small(fr)); wide = (gm.mean() / 255.0) >= WIDE_MIN
                 cut = cuts.check(fr)
-                need = wide and (cut or not prev_wide or idx - last_det >= self.stride)
+                need = wide and (cut or not prev_wide or idx - last_det >= self.stride)   # people (tracker) frames
                 if need: last_det = idx
                 prev_wide = wide
-                pend.append({"idx": idx, "frame": fr, "gm": gm, "wide": wide, "cut": cut, "need": need, "bn": None})
-                n_need += 1 if need else 0
+                # every wide frame is detected: the ball moves too fast to skip frames (a shot crosses the box in ~10),
+                # people are only re-detected every `stride` frames and predicted in between
+                pend.append({"idx": idx, "frame": fr, "gm": gm, "wide": wide, "cut": cut, "need": need, "det": wide, "bn": None})
+                n_need += 1 if wide else 0
                 if n_need >= self.batch or len(pend) >= self.cap:
                     flush(); n_need = 0
             flush()
@@ -1566,21 +1601,25 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             in_wide = True; wide_frames += 1
             cam.update(frame)
 
-            do_det = item["bn"] is not None
+            bn = item["bn"]
+            do_det = bn is not None and item["need"]          # people this frame (the ball is looked for on every frame)
             cands = []
-            if do_det:
-                bn = item["bn"]
+            if bn is not None:
                 xyxy = bn.xyxy; conf = bn.conf; cls = bn.cls.astype(int)
+                for i in range(len(cls)):
+                    if int(cls[i]) not in ball_ids: continue
+                    c = float(conf[i]); x1, y1, x2, y2 = xyxy[i]
+                    if c >= BALL_MIN_CONF and (x2 - x1) <= 0.03 * W and (y2 - y1) <= 0.05 * H:
+                        bx_, by_ = (x1 + x2) / 2, (y1 + y2) / 2
+                        cands.append((bx_, by_, c, ball_over_pitch(gm, bx_, by_, H)))
+            if do_det:
                 keep = []
                 for i in range(len(cls)):
-                    k = int(cls[i]); c = float(conf[i]); x1, y1, x2, y2 = xyxy[i]
-                    if k in ball_ids:
-                        if c >= BALL_MIN_CONF and (x2 - x1) <= 0.03 * W and (y2 - y1) <= 0.05 * H:
-                            cands.append(((x1 + x2) / 2, (y1 + y2) / 2, c))
-                        continue
-                    if c < mode["person_conf"]: continue
+                    k = int(cls[i]); c = float(conf[i])
+                    if k in ball_ids or c < PERSON_MIN_CONF: continue
                     bx = xyxy[i].astype(int)
                     if valid_geometry(bx, W, H) and on_turf(gm, bx): keep.append(i)
+                keep = drop_part_boxes(xyxy, conf, keep)
                 det = bn[np.array(keep, dtype=int)]
                 try:
                     trk = tracker.update(det, frame)

@@ -66,8 +66,8 @@ def hf_search(queries: list) -> dict:
     from huggingface_hub import HfApi
     api, out = HfApi(), {}
     for q in queries:
-        rows = []
-        for m in api.list_models(search=q, sort="downloads", limit=25):
+        rows = []; q, _, n = q.partition(":")
+        for m in api.list_models(search=q, sort="downloads", limit=int(n or 25)):
             try:
                 info = api.model_info(m.id, files_metadata=True)
                 files = [(f.rfilename, f.size) for f in info.siblings if f.rfilename.endswith((".pt", ".onnx", ".pth", ".safetensors", ".md", ".yaml"))]
