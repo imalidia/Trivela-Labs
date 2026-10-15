@@ -50,10 +50,43 @@ for _ in $(seq 1 60); do
 done
 [ -n "$URL" ] || { echo "The tunnel did not start; see tunnel.log"; exit 1; }
 
+# With GH_TOKEN (a GitHub token allowed to write this repo's contents), point the site at this engine:
+# config.js is updated on GitHub and Vercel redeploys in about a minute.
+SITE_UPDATED=no
+if [ -n "${GH_TOKEN:-}" ]; then
+  if python - "$URL" <<'PY'
+import base64, json, re, sys, urllib.request
+url = sys.argv[1]
+repo = "imalidia/Trivela-Labs"
+path = "trivela-frontend/landing/assets/js/config.js"
+api = f"https://api.github.com/repos/{repo}/contents/{path}"
+import os
+headers = {"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json",
+           "User-Agent": "trivela-run-gpu"}
+with urllib.request.urlopen(urllib.request.Request(api, headers=headers), timeout=30) as r:
+    cur = json.load(r)
+text = base64.b64decode(cur["content"]).decode()
+new = re.sub(r"engineUrl:\s*'[^']*'", f"engineUrl: '{url}'", text)
+if new == text:
+    print("Site already points at", url); sys.exit(0)
+body = json.dumps({"message": "chore: point the site at the GPU engine " + url,
+                   "content": base64.b64encode(new.encode()).decode(), "sha": cur["sha"]}).encode()
+req = urllib.request.Request(api, data=body, headers=headers, method="PUT")
+with urllib.request.urlopen(req, timeout=30) as r:
+    print("Site updated on GitHub, Vercel is redeploying (about 1 minute)")
+PY
+  then SITE_UPDATED=yes
+  else echo "Could not update the site on GitHub (check GH_TOKEN). Send the address below to update it by hand."
+  fi
+fi
+
 echo
 echo "=================================================================="
-echo " ENGINE ADDRESS (put it in trivela-frontend/landing/assets/js/config.js):"
-echo "   $URL"
-echo " It stays the same until the machine restarts or the tunnel is killed."
+echo " ENGINE ADDRESS: $URL"
+if [ "$SITE_UPDATED" = yes ]; then
+  echo " The site switches to this engine in about a minute. Nothing else to do."
+else
+  echo " Run with GH_TOKEN=... to update the site automatically."
+fi
 echo " Engine log: tail -f $(pwd)/engine.log"
 echo "=================================================================="
