@@ -32,22 +32,28 @@ fi
 
 mkdir -p /content tactical_workspace
 export TRIVELA_ALLOWED_ORIGINS
-python -m uvicorn app:app --host 0.0.0.0 --port 8000 &
-ENGINE_PID=$!
-trap 'kill "$ENGINE_PID" 2>/dev/null' EXIT
 
-# Quick tunnel: free, no account. Look for the https://....trycloudflare.com line in the output below.
-SITE="${TRIVELA_ALLOWED_ORIGINS%%,*}"
-cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 2>&1 | while IFS= read -r line; do
-  echo "$line"
-  if [ -z "${SHOWN:-}" ] && [[ "$line" =~ (https://[a-z0-9-]+\.trycloudflare\.com) ]]; then
-    SHOWN=1
-    printf '
-=========================================================
-OPEN THIS LINK TO USE YOUR GPU:
-%s/app.html?engine=%s
-=========================================================
+# Engine and tunnel run in the background, so closing the terminal or browser tab doesn't stop them.
+# Re-running this script restarts only the engine: the tunnel (and so the site's engine address) stays the same.
+pkill -f "uvicorn app:app" 2>/dev/null || true
+nohup python -m uvicorn app:app --host 0.0.0.0 --port 8000 > engine.log 2>&1 &
+if ! pgrep -f "cloudflared tunnel" >/dev/null; then
+  rm -f tunnel.log
+  nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8000 > tunnel.log 2>&1 &
+fi
 
-' "$SITE" "${BASH_REMATCH[1]}"
-  fi
+URL=""
+for _ in $(seq 1 60); do
+  URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log 2>/dev/null | head -1 || true)
+  [ -n "$URL" ] && break
+  sleep 1
 done
+[ -n "$URL" ] || { echo "The tunnel did not start; see tunnel.log"; exit 1; }
+
+echo
+echo "=================================================================="
+echo " ENGINE ADDRESS (put it in trivela-frontend/landing/assets/js/config.js):"
+echo "   $URL"
+echo " It stays the same until the machine restarts or the tunnel is killed."
+echo " Engine log: tail -f $(pwd)/engine.log"
+echo "=================================================================="
