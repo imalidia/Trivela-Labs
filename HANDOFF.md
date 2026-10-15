@@ -1,7 +1,36 @@
 # Engine accuracy work: handoff plan
 
 Written for the next session to follow step by step. Read it all once, then work the **Steps** in order.
-Branch: `claude/modal-engine` (not merged to `main`). Last engine commit: `0556d45`.
+Branch: `claude/modal-engine` (not merged to `main`). Last engine commit: see `git log` (after `0556d45` came the fixes listed in **Current status**).
+
+## Current status (read first)
+
+**Start prompt for a new session:** "Read `HANDOFF.md` on branch `claude/modal-engine` of imalidia/Trivela-Labs and continue from *Current status*. No workflows/subagents. Short replies."
+
+Done and deployed to Modal (the deploy workflow runs on every push to this branch):
+- Everything in section 4 (`0556d45`).
+- Full-clip GPU eval of `0556d45` (results: `eval-data` branch `runs/0556d45`): **goals 2–2 correct**, ball visible 28.9 % (was 14.9 %), run 146 s / 63.7 fps on A10 (was 108 s). Problems it showed: too many shots (8/7, on target 8/5), **19 keeper identities** (outfield players + referee in magenta rings, see `frame_0090.00.jpg`), top speeds piled at the 37.4 km/h cap, radar squashed at one side.
+- Fixed after it (commit "fix(engine): 0-0 start score, fewer false keepers/shots…"):
+  - `ScoreReader.goals()`: a single `0-0` read is accepted as the start score. Offline on the full clip it now returns 4 goals at 24 s, 172 s, 226 s, 310 s (all correct). Unit test `test_score_reader_turns_score_changes_into_goals`.
+  - `KIT_OUTLIER` 0.3 → 0.45 (Roma's red was "off-kit" → keepers everywhere); recent-window keeper rule needs a full 8-sample window with ≥ 7 off-kit; early rule `OFF_KIT_EARLY, OFF_KIT_EARLY_SHARE = 8, 0.9`; off-kit tracks the detector calls referee ≥ 10 % → official.
+  - Top speed = min of two consecutive 1-s speeds (no single spikes).
+  - `_toward_keeper`: strike must start 2–12 keeper-heights from him; on target if lost within 1.5 h; image shots also need pitch distance ≤ `SHOT_RANGE_M + 8`.
+  - `fastest_strike_*` = max measured strike speed per team (≤ 130 km/h), not the old 150 cap.
+  - Local check on clip 80–95 s: 1 keeper + 1 official label (was many), top speeds 34.6 / 28.1 km/h.
+- 41 engine tests + 60 site tests pass.
+
+**Not verified yet:** a full-clip GPU eval of the latest commit. The user may test it themselves on https://imalidia16--trivela.us-east.modal.run/trivela; ask for their result before spending a GPU eval.
+
+**Next, in order:**
+1. Verify the latest commit on the full clip (user's test, or one `[eval rerun=balanced times=9.5,10.4,90,212,293]` commit). Targets: goals 2–2; shots roughly 4–8 per team with the 4 goal shots among them; 2 keeper identities (`GK1`, `GK2`), referee unringed; top speeds spread 28–36 km/h, not piled at 37.4.
+2. If shots or keepers are still off, tune per Steps 3–4 below (use the local harness first).
+3. Radar (Step 7): still squashed in near-goal shots and sometimes in midfield (`frame_0090` of `runs/0556d45`: all dots at the right edge). Likely cause: x offset clamping in `PitchMapper._solve` / keeper anchor. Investigate on the local harness, segment `80 15` and `0 20`.
+4. Replays (Step 6).
+5. Stats table + ball speed in the UI (Step 8).
+6. Finish (Step 10): remove the branch from `deploy-modal.yml` triggers, ask the user about a PR, remind them to delete `eval-data`.
+
+The local harness work folder from the previous session is gone in a new container: redo section 3 (≈ 5 min + first detection pass).
+
 
 ---
 
