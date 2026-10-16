@@ -60,6 +60,7 @@ MODES = {
 }
 RES_H = {"720p": 720, "1080p": 1080, "1440p": 1440, "source": 0}
 BALL_MIN_CONF = 0.10
+BALL_ZOOM = os.environ.get("TRIVELA_BALL_ZOOM", "1") != "0"   # second look at 2x zoom in frames without the ball
 DET_CONF = 0.10
 PERSON_MIN_CONF = 0.12   # people boxes passed to the tracker (it starts tracks only from new_track_thresh up)
 SC = 0.5            # scale of the grass-mask working image
@@ -2119,6 +2120,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         bw = {"p": None, "f": -10, "v": 0.0, "raw": 0.0, "armed": True, "dir": None}; ball_max = 0.0; ball_sum = 0.0; ball_n = 0
         strikes = 0; swaps_n = 0; splits_n = 0; prev_bn = None
         sigacc = {}; last_seen = {}; embacc = {}; det_n = [0]; embedder = Embedder()
+        zoom_m = YOLO(MODEL_PATH) if BALL_ZOOM else None; zn = [0, 0]     # its own copy: the detector thread uses the other
         seg_n = [0]          # camera segment id for the analytics log: bumped whenever the camera state resets
 
         def reset_state(f):
@@ -2292,6 +2294,27 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 for cid in [c for c, t in tracks.items() if idx - t["last"] > max(10, int(fps))]:
                     del tracks[cid]
 
+            if not cands and wide and zoom_m is not None:
+                # no ball in this frame: look again at 2x zoom where it should be (the filter's prediction, else the
+                # feet of the last player on the ball); a small, fast ball often only shows up when zoomed in
+                at = None
+                if ball.init and ball.lost <= BALL_RESET and ball.trail: at = ball.trail[-1]
+                elif poss.owner is not None and poss.owner in tracks:
+                    tb = tracks[poss.owner]["box"]; at = ((tb[0] + tb[2]) / 2, tb[3])
+                if at is not None:
+                    cw, ch = max(320, W // 4), max(180, H // 4)
+                    x0 = int(min(max(0, at[0] - cw / 2), W - cw)); y0 = int(min(max(0, at[1] - ch / 2), H - ch))
+                    try:
+                        rz = zoom_m.predict(frame[y0:y0 + ch, x0:x0 + cw], imgsz=640, conf=BALL_MIN_CONF, half=HAS_GPU,
+                                            device=DEVICE_TARGET, verbose=False, classes=sorted(ball_ids), max_det=5)[0]
+                        zn[0] += 1
+                        for (x1, y1, x2, y2), c in zip(rz.boxes.xyxy.cpu().numpy(), rz.boxes.conf.cpu().numpy()):
+                            if (x2 - x1) <= 0.03 * W and (y2 - y1) <= 0.05 * H:
+                                bx_, by_ = x0 + (x1 + x2) / 2, y0 + (y1 + y2) / 2
+                                cands.append((bx_, by_, float(c), ball_over_pitch(gm, bx_, by_, H)))
+                        if cands: zn[1] += 1
+                    except Exception as e:
+                        print("ball zoom failed, turned off:", e); zoom_m = None
             ball_pt = ball.update(cands, W)
 
             cur = []
@@ -2450,7 +2473,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             "ball_visible_pct": round(100.0 * ball_seen / max(1, wide_frames), 1),
             "ball_max_kmh": round(ball_max, 1), "ball_avg_kmh": round(ball_sum / max(1, ball_n), 1),
             "strikes": strikes, "sprints": sum(1 for e_ in xev if e_[1] == "sprint"), "swaps_fixed": swaps_n,
-            "ids_split": splits_n, "ids_relinked": getattr(ident, "relinked", 0), "reid_embeddings": embedder.n,
+            "ids_split": splits_n, "ids_relinked": getattr(ident, "relinked", 0), "reid_embeddings": embedder.n, "ball_zoom_tries": zn[0], "ball_zoom_found": zn[1],
             "wide_frames": wide_frames, "wide_pct": round(100.0 * wide_frames / max(1, idx + 1), 1),
             "players": pl, "top_speeds": top_speeds,
             "sprint_kmh_a": round(spk[0][0] / spk[0][1] * 3.6, 1) if spk[0][1] else 0.0,
