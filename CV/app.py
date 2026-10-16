@@ -554,6 +554,48 @@ def app_dist(a, b):
 
 SPLIT_BASE = 5_000_000   # identities split off a track that changed player; below the re-identified 10_000_000+ range
 
+# ----------------------------------------------------------------------------
+# APPEARANCE RE-ID: a person re-identification network (Ultralytics yolo26s-reid) turns each player crop into a
+# vector; the same player gives similar vectors even when his kit matches his teammates' (build, hair, skin, boots).
+# Used to re-link lost tracks, to check swaps and to join tracklets at the end. Optional: without the weights the
+# engine falls back to colour histograms only.
+# ----------------------------------------------------------------------------
+REID_MODEL = os.environ.get("TRIVELA_REID_MODEL", "yolo26s-reid.onnx")
+EMB_EVERY = 3            # every 3rd detection frame, every track gets a new embedding (new tracks: always)
+EMB_GATE = 0.45          # cosine distance above which two crops are never the same player
+EMB_MIN_H = 40           # px: smaller crops carry too little detail to embed
+
+class Embedder:
+    def __init__(self):
+        self.ok = False; self.n = 0
+        if not os.path.isfile(REID_MODEL): return
+        try:
+            from ultralytics.trackers.utils.reid import ReID
+            self.m = ReID(REID_MODEL, fp16=HAS_GPU); self.ok = True
+        except Exception as e:
+            print("re-id model not loaded:", e)
+
+    def __call__(self, frame, boxes):
+        """L2-normalised embedding per xyxy box (None for boxes too small or failed)"""
+        out = [None] * len(boxes)
+        if not self.ok or not len(boxes): return out
+        keep = [i for i, b in enumerate(boxes) if b[3] - b[1] >= EMB_MIN_H]
+        if not keep: return out
+        b = np.array([boxes[i] for i in keep], np.float32)
+        xywh = np.c_[(b[:, 0] + b[:, 2]) / 2, (b[:, 1] + b[:, 3]) / 2, b[:, 2] - b[:, 0], b[:, 3] - b[:, 1]]
+        try:
+            feats = self.m(frame, xywh)
+        except Exception as e:
+            print("re-id failed, turned off:", e); self.ok = False; return out
+        for i, f in zip(keep, feats):
+            if f is None: continue
+            f = np.asarray(f, np.float32).ravel(); nrm = float(np.linalg.norm(f))
+            if nrm > 1e-9: out[i] = f / nrm; self.n += 1
+        return out
+
+def emb_dist(a, b):
+    return None if a is None or b is None else float(1.0 - np.dot(a, b))
+
 class IdentityManager:
     # Globally unique IDs. Tracker IDs restart after every reset, so a base offset keeps identities from colliding.
     # Lost tracks are re-linked with Hungarian matching on WORLD-space motion + appearance + team (never across teams),
@@ -567,7 +609,7 @@ class IdentityManager:
         self.base = self.next_id
     def _mint(self, raw):
         cid = raw + self.base; self.next_id = max(self.next_id, cid + 1); return cid
-    def split(self, raw, f=None, box=None, lab=None, active=()):
+    def split(self, raw, f=None, box=None, lab=None, active=(), emb=None):
         """The tracker kept this raw id on a different player. He is most likely someone whose own track was just lost
         (the two crossed): the nearest lost identity of his team takes him back, else he gets a new one"""
         if box is not None:
@@ -576,6 +618,8 @@ class IdentityManager:
             for cid, i in self.info.items():
                 age = f - i["last"]
                 if cid in active or i["lab"] != lab or not 1 <= age <= self.max_age: continue
+                e = emb_dist(emb, i.get("emb"))
+                if e is not None and e > EMB_GATE: continue              # looks like someone else
                 b = i["box"]; d = math.hypot((b[0] + b[2]) / 2 - x, b[3] - y) / max(h, i["h"])
                 lim = 1.5 + 3.0 * age / self.fps
                 if d <= lim and d / lim < bd: best, bd = cid, d / lim
@@ -597,10 +641,16 @@ class IdentityManager:
                     pred = i["wpos"] + i["wvel"] * min(age, self.fps * 0.6)
                     d = float(np.hypot(*(n["wpos"] - pred))) / max(n["h"], i["h"])
                     lim = 1.0 + 3.0 * age / self.fps
+                    e0 = emb_dist(n.get("emb"), i.get("emb"))
+                    if e0 is not None and e0 < 0.5 * EMB_GATE: lim *= 1.6     # clearly the same person: allow a longer way
                     if d > lim: continue
                     ad = app_dist(n["app"], i["app"]) if (n["app"] is not None and i["app"] is not None) else 0.25
                     if ad > 0.55: continue
-                    C[a, b] = 0.55 * d / lim + 0.45 * min(1.0, ad / 0.5)
+                    e = emb_dist(n.get("emb"), i.get("emb"))
+                    if e is None:
+                        C[a, b] = 0.55 * d / lim + 0.45 * min(1.0, ad / 0.5)
+                    elif e <= EMB_GATE:
+                        C[a, b] = 0.4 * d / lim + 0.2 * min(1.0, ad / 0.5) + 0.4 * e / EMB_GATE
             try:
                 from scipy.optimize import linear_sum_assignment
                 rr, cc = linear_sum_assignment(C)
@@ -614,11 +664,16 @@ class IdentityManager:
                 if C[a, b] < 0.75: matched[fresh[a]["raw"]] = lost[b][0]
         for n in fresh:
             self.alias[n["raw"]] = matched.get(n["raw"]) or self._mint(n["raw"])
-    def update(self, cid, raw, f, box, cls, lab, wpos, h, app, clean):
+    def update(self, cid, raw, f, box, cls, lab, wpos, h, app, clean, emb=None):
         i = self.info.get(cid)
         if i is None:
-            self.info[cid] = dict(last=f, wpos=wpos.copy(), wvel=np.zeros(2, np.float32), h=h, cls=cls, lab=lab, app=app, box=box.copy())
+            self.info[cid] = dict(last=f, wpos=wpos.copy(), wvel=np.zeros(2, np.float32), h=h, cls=cls, lab=lab, app=app, box=box.copy(),
+                                  emb=emb)
         else:
+            if emb is not None and clean:
+                g = i.get("emb")
+                if g is None: i["emb"] = emb
+                else: g = 0.85 * g + 0.15 * emb; i["emb"] = g / max(1e-9, float(np.linalg.norm(g)))
             dt = max(1, f - i["last"])
             i["wvel"] = 0.7 * i["wvel"] + 0.3 * ((wpos - i["wpos"]) / dt)
             i["wpos"] = wpos.copy(); i["h"] = 0.9 * i["h"] + 0.1 * h; i["last"] = f; i["lab"] = lab; i["box"] = box.copy()
@@ -687,18 +742,27 @@ def reid_cluster(items, group):
     target = REID_TARGET[group]
     items = sorted(items, key=lambda it: -it["w"])
     byid = {it["cid"]: it for it in items}
-    cents, wsum, mem, assign = [], [], [], {}
+    cents, wsum, mem, assign, ecs = [], [], [], {}, []
     def conflict(k, it): return any(a < it["t1"] and it["t0"] < b for a, b, _ in mem[k])
     def pick(it):
         cand = [k for k in range(len(cents)) if not conflict(k, it)]
         if not cand: return None, 9.0
-        ds = sig_dists(np.stack([cents[k] for k in cand]), it["sig"]); j = int(np.argmin(ds))
+        ds = sig_dists(np.stack([cents[k] for k in cand]), it["sig"])
+        e = it.get("emb")
+        if e is not None:          # half colour signature, half appearance embedding where both are known
+            for j, k in enumerate(cand):
+                if ecs[k] is not None: ds[j] = 0.5 * ds[j] + 0.5 * float(1.0 - np.dot(ecs[k], e))
+        j = int(np.argmin(ds))
         return cand[j], float(ds[j])
     def put(k, it):
+        e = it.get("emb")
         if k == len(cents):
-            cents.append(it["sig"].copy()); wsum.append(it["w"]); mem.append([])
+            cents.append(it["sig"].copy()); wsum.append(it["w"]); mem.append([]); ecs.append(None if e is None else e.copy())
         else:
             cents[k] = (cents[k] * wsum[k] + it["sig"] * it["w"]) / (wsum[k] + it["w"]); wsum[k] += it["w"]
+            if e is not None:
+                g = e if ecs[k] is None else ecs[k] + 0.5 * e
+                ecs[k] = g / max(1e-9, float(np.linalg.norm(g)))
         mem[k].append((it["t0"], it["t1"], it["cid"])); assign[it["cid"]] = k
     # seeding: longest / best-quality tracklets first, so the first full-squad shot creates the identities
     for it in items:
@@ -2053,7 +2117,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         phys = {}; xev = []; last_sprint = {}; shots = []; shot_start = None
         bw = {"p": None, "f": -10, "v": 0.0, "raw": 0.0, "armed": True, "dir": None}; ball_max = 0.0; ball_sum = 0.0; ball_n = 0
         strikes = 0; swaps_n = 0; splits_n = 0; prev_bn = None
-        sigacc = {}; last_seen = {}
+        sigacc = {}; last_seen = {}; embacc = {}; det_n = [0]; embedder = Embedder()
         seg_n = [0]          # camera segment id for the analytics log: bumped whenever the camera state resets
 
         def reset_state(f):
@@ -2134,6 +2198,13 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         fresh.append({"raw": raw, "box": box, "cls": k, "h": float(max(1.0, box[3] - box[1])),
                                       "lab": plab or team.quick(frame, box), "app": appearance(frame, box, grass),
                                       "wpos": np.array([(box[0] + box[2]) / 2 - cam.cum[0], box[3] - cam.cum[1]], np.float32)})
+                emb_by_raw = {}
+                if embedder.ok:
+                    det_n[0] += 1
+                    pick = [j for j, r_ in enumerate(rows) if r_[0] not in ident.alias or det_n[0] % EMB_EVERY == 0]
+                    for j, e_ in zip(pick, embedder(frame, [rows[j][1] for j in pick])):
+                        if e_ is not None: emb_by_raw[rows[j][0]] = e_
+                    for n_ in fresh: n_["emb"] = emb_by_raw.get(n_["raw"])
                 ident.assign_new(idx, fresh, {ident.alias[r_[0]] for r_ in rows if r_[0] in ident.alias})
                 act_now = {ident.alias[r_[0]] for r_ in rows if r_[0] in ident.alias}
                 used = set(); boxes_now = {}
@@ -2145,13 +2216,18 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         team.add_ref_sample(frame, box)
                     lab = team.label_for(cid, frame, box.astype(int), idx, "ref" if k in ref_ids else "gk" if k in gk_ids else None)
                     if team.flipped:                     # shirt changed team: the tracker slid onto another player
-                        old = cid; cid = ident.split(raw, idx, box, lab, act_now | used); used.add(cid); team.hand_over(old, cid, lab); splits_n += 1
+                        old = cid; cid = ident.split(raw, idx, box, lab, act_now | used, emb_by_raw.get(raw)); used.add(cid); team.hand_over(old, cid, lab); splits_n += 1
                     h = float(max(1.0, box[3] - box[1]))
                     wpos = np.array([(box[0] + box[2]) / 2 - cam.cum[0], box[3] - cam.cum[1]], np.float32)
                     clean = idx - ident.last_ov.get(cid, -999) > 12
                     known = ident.info.get(cid)
                     app = appearance(frame, box, grass) if (known is None or known["app"] is None or (clean and (idx + cid) % 6 == 0)) else None
-                    ident.update(cid, raw, idx, box, k, lab, wpos, h, app, clean)
+                    e_ = emb_by_raw.get(raw)
+                    ident.update(cid, raw, idx, box, k, lab, wpos, h, app, clean, e_)
+                    if e_ is not None and clean:          # the tracklet's appearance, for joining tracklets at the end
+                        ea = embacc.get(cid)
+                        if ea is None: embacc[cid] = [e_.copy(), 1]
+                        else: ea[0] += e_; ea[1] += 1
                     last_seen[cid] = idx
                     if reid and clean and (idx + cid) % 5 == 0 and h >= 0.04 * H:
                         sg = signature(frame, box, grass)
@@ -2292,7 +2368,9 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             for c, acc_ in sigacc.items():
                 grp = team_info.get(c)
                 if grp not in items or acc_[1] <= 0: continue
-                items[grp].append({"cid": c, "sig": acc_[0] / acc_[1], "w": float(acc_[1]), "t0": first_seen.get(c, 0),
+                ea = embacc.get(c); em = None
+                if ea is not None and ea[1] >= 3: em = ea[0] / max(1e-9, float(np.linalg.norm(ea[0])))
+                items[grp].append({"cid": c, "sig": acc_[0] / acc_[1], "emb": em, "w": float(acc_[1]), "t0": first_seen.get(c, 0),
                                    "t1": last_seen.get(c, 0) + 1, "short": appear[c] < MIN_TRACK_LEN})
             pref = {"team_a": "A", "team_b": "B", "goalkeeper": "GK", "official": "REF"}
             for gi, grp in enumerate(groups):
@@ -2371,7 +2449,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             "ball_visible_pct": round(100.0 * ball_seen / max(1, wide_frames), 1),
             "ball_max_kmh": round(ball_max, 1), "ball_avg_kmh": round(ball_sum / max(1, ball_n), 1),
             "strikes": strikes, "sprints": sum(1 for e_ in xev if e_[1] == "sprint"), "swaps_fixed": swaps_n,
-            "ids_split": splits_n, "ids_relinked": getattr(ident, "relinked", 0),
+            "ids_split": splits_n, "ids_relinked": getattr(ident, "relinked", 0), "reid_embeddings": embedder.n,
             "wide_frames": wide_frames, "wide_pct": round(100.0 * wide_frames / max(1, idx + 1), 1),
             "players": pl, "top_speeds": top_speeds,
             "sprint_kmh_a": round(spk[0][0] / spk[0][1] * 3.6, 1) if spk[0][1] else 0.0,

@@ -30,11 +30,14 @@ image = (
                   " | tar -xJ -C /usr/local --strip-components=1")
     .pip_install("torch", "torchvision", index_url="https://download.pytorch.org/whl/cu126")
     .pip_install("ultralytics", "fastapi", "uvicorn", "python-multipart", "pyyaml", "huggingface_hub", "scipy", "lap>=0.5.12",
-                 "pytesseract")
+                 "pytesseract", "onnxruntime-gpu")
     # football detection weights, baked into the image
     .run_commands("mkdir -p /app && cd /app && python -c \"from huggingface_hub import hf_hub_download; "
                   "hf_hub_download(repo_id='martinjolif/yolo-football-player-detection', "
                   "filename='yolo-football-player-detection.pt', local_dir='.')\"")
+    # person re-identification (appearance embeddings), from the Ultralytics assets
+    .run_commands("cd /app && python -c \"from ultralytics.utils.downloads import attempt_download_asset; "
+                  "attempt_download_asset('yolo26s-reid.onnx')\" && ls -la /app/yolo26s-reid.onnx")
     # pitch keypoints (29 landmarks of the markings), for the homography to pitch metres
     .run_commands("cd /app && python -c \"from huggingface_hub import hf_hub_download; import shutil; "
                   "shutil.copy(hf_hub_download(repo_id='cdqqqqqq/Soccana_Keypoint', filename='Model/weights/best.pt'), "
