@@ -7,7 +7,7 @@
  "fps": 60.2,
  "progress": 100.0,
  "eta": 0,
- "video_url": "/api/video-stream/tactical_output.mp4?t=1792177055",
- "meta_url": "/api/tracking-data/tactical_metadata.json.gz?t=1792177055",
+ "video_url": "/api/video-stream/tactical_output.mp4?t=1792177365",
+ "meta_url": "/api/tracking-data/tactical_metadata.json.gz?t=1792177365",
  "error_msg": ""
 }
