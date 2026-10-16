@@ -1,10 +1,10 @@
-✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-PQHpdLUoWL3BVJlenS4oFf
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-hbEQmctQwQwKjjfCUEB5vH
 ✓ Created objects.
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
-├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
 ├── ✓ Uploaded PythonPackage:modal_app
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
 ├── ✓ Created Function rerun.
 ├── ✓ Created Function snapshot.
@@ -20,27 +20,28 @@ WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quan
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 kit clicks: {'home': 1, 'away': 1} of 3 home kit: b
+re-id providers: ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
 Loading yolo26s-reid.onnx for ONNX Runtime inference...
 [31m[1mrequirements:[0m Ultralytics requirement ['onnx'] not found, attempting AutoUpdate...
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 Using Python 3.12.10 environment at: /usr/local
-Resolved 5 packages in 128ms
+Resolved 5 packages in 97ms
 Downloading onnx (8.5MiB)
  Downloading onnx
-Prepared 2 packages in 299ms
-Installed 2 packages in 48ms
+Prepared 2 packages in 258ms
+Installed 2 packages in 49ms
  + ml-dtypes==0.6.0
  + onnx==1.23.2
 
-[31m[1mrequirements:[0m AutoUpdate success ✅ 0.6s
+[31m[1mrequirements:[0m AutoUpdate success ✅ 0.5s
 WARNING ⚠️ [31m[1mrequirements:[0m [1mRestart runtime or rerun command for updates to take effect[0m
 
-Using ONNX Runtime 1.31.0 with CUDAExecutionProvider
-[0;93m2026-10-16 19:56:17.324116068 [W:onnxruntime:Default, onnxruntime_pybind_state.cc:785 FindRegisteredPluginEpDevice] Invalid device_id value 'None' in provider options for EP 'CUDAExecutionProvider'; ignoring.[m
-[0;93m2026-10-16 19:56:17.324163283 [W:onnxruntime:Default, onnxruntime_pybind_state.cc:856 operator()] No registered plugin EP device found for 'CUDAExecutionProvider' with device_id=None[m
-[1;31m2026-10-16 19:56:17.339069684 [E:onnxruntime:Default, provider_bridge_ort.cc:2458 operator()] /onnxruntime_src/onnxruntime/core/session/provider_bridge_ort.cc:2043 onnxruntime::Provider& onnxruntime::ProviderLibrary::Get() [ONNXRuntimeError] : 1 : FAIL : Failed to load library /usr/local/lib/python3.12/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so with error: libcublasLt.so.13: cannot open shared object file: No such file or directory
-[m
-[0;93m2026-10-16 19:56:17.339108437 [W:onnxruntime:Default, onnxruntime_pybind_state.cc:1295 CreateExecutionProviderFactoryInstance] Failed to create CUDAExecutionProvider. Require cuDNN 9.* and CUDA 13.*. Please install all dependencies as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.[m
+Using ONNX Runtime 1.22.0 with CUDAExecutionProvider
+*************** EP Error ***************
+EP Error /onnxruntime_src/onnxruntime/core/providers/cuda/cuda_execution_provider_info.cc:60 static onnxruntime::CUDAExecutionProviderInfo onnxruntime::CUDAExecutionProviderInfo::FromProviderOptions(const onnxruntime::ProviderOptions&) [ONNXRuntimeError] : 1 : FAIL : provider_options_utils.h:151 Parse Failed to parse provider option "device_id": parse_string.h:99 ParseStringWithClassicLocale Failed to parse value: "0"
+ when using [('CUDAExecutionProvider', {'device_id': None}), 'CPUExecutionProvider']
+Falling back to ['CPUExecutionProvider'] and retrying.
+****************************************
 WARNING ⚠️ CUDA requested but CUDAExecutionProvider not available. Using CPU...
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
@@ -5148,7 +5149,7 @@ WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quan
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
-[perf] total 283.4s | warm-up+prepass 7.0s | detector GPU busy 117.4s in 796 batches | main waited on detector 1.2s | encoder back-pressure 0.2s | 33.7 fps | bottleneck: CPU tracking / drawing
+[perf] total 274.2s | warm-up+prepass 6.7s | detector GPU busy 113.8s in 796 batches | main waited on detector 1.2s | encoder back-pressure 0.2s | 34.8 fps | bottleneck: CPU tracking / drawing
 wrote ['clip.txt', 'frame_0030.00.jpg', 'frame_0120.00.jpg', 'frame_0200.00.jpg', 'frame_0300.00.jpg', 'sheet_01.jpg', 'summary.json', 'tactical_metadata.json.gz'] to eval-out
 Stopping app - local entrypoint completed.
-✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-PQHpdLUoWL3BVJlenS4oFf
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-hbEQmctQwQwKjjfCUEB5vH
