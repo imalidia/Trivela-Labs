@@ -1,0 +1,24 @@
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-W1HGpsRgMNc4g1qtw1XUBO
+✓ Created objects.
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
+├── ✓ Uploaded PythonPackage:modal_app
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
+├── ✓ Created Function rerun.
+├── ✓ Created Function snapshot.
+├── ✓ Created Function hf_search.
+└── ✓ Created Function kp_probe.
+WARNING ⚠️ user config directory '/tmp/Ultralytics/Ultralytics' is not writable, using '/tmp/Ultralytics'. Set YOLO_CONFIG_DIR to override.
+Creating new Ultralytics Settings v0.0.8 file ✅ 
+View Ultralytics Settings with 'yolo settings' or at '/tmp/Ultralytics/settings.json'
+Update Settings with 'yolo settings key=value', i.e. 'yolo settings runs_dir=path/to/dir'. For help see https://docs.ultralytics.com/usage/settings.
+
+[1AFetching 4 files:   0%|          | 0/4 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+
+[1AFetching 4 files:  25%|██▌       | 1/4 [00:00<00:01,  2.62it/s]
+[1AFetching 4 files:  75%|███████▌  | 3/4 [00:03<00:01,  1.22s/it]
+[1AFetching 4 files: 100%|██████████| 4/4 [00:03<00:00,  1.16it/s]
+Stopping app - local entrypoint completed.
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-W1HGpsRgMNc4g1qtw1XUBO
