@@ -238,6 +238,7 @@ class TeamModel:
         self.settled = {}                       # track -> team its shirt settled on
         self.flipped = False                    # the last label_for() saw a settled track change team
         self.ref_samples = []; self.ref_c = None # the officials' shirt colour, learned from the detector's referee boxes
+        self.fsum = {}                          # sum of shirt samples per track (debug)
         self.nref = Counter()                   # shirt samples per track nearest the officials' colour
         self.recent = defaultdict(lambda: deque(maxlen=8))   # the last shirt samples per track: team_a / team_b / "off" / "ref"
         self.rrole = defaultdict(lambda: deque(maxlen=8))    # the detector's class for the same calls: player / gk / ref
@@ -322,6 +323,7 @@ class TeamModel:
                     for k in c: c[k] *= KIT_DECAY
                     rf = self.refish(f)
                     c[near] += 1; self.nvotes[cid] += 1; self.noff[cid] += off; self.nref[cid] += rf
+                    self.fsum[cid] = self.fsum.get(cid, 0.0) + f
                     self.recent[cid].append("ref" if rf else "off" if off else near)
                     self.rrole[cid].append(role or "player")
                 else:
@@ -2351,7 +2353,8 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 "role_debug": {"ref_c": None if team.ref_c is None else [round(float(v), 3) for v in np.ravel(team.ref_c)],
                                "centroids": [[round(float(v), 3) for v in row] for row in np.asarray(team.centroids)] if team.ready else None,
                                "sep": round(float(getattr(team, "sep", 0.0)), 3),
-                               "tracks": [[int(c), G(c), dict(team.roles[c]), int(team.nvotes[c]), int(team.noff[c]), int(team.nref[c])]
+                               "tracks": [[int(c), G(c), dict(team.roles[c]), int(team.nvotes[c]), int(team.noff[c]), int(team.nref[c]),
+                                           [round(float(v), 1) for v in np.ravel(team.fsum.get(c, np.zeros(3)) / max(1, team.nvotes[c]))]]
                                           for c in sorted(team.roles, key=lambda c: -sum(team.roles[c].values()))[:80]]},
                 "score": {"ocr": score.ok, "reads": len(score.reads), "sample": score.reads[:: max(1, len(score.reads) // 40)],
                           "goals": goals}}
