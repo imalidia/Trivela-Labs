@@ -87,9 +87,48 @@ def hf_search(queries: list) -> dict:
     return out
 
 
+@app.function(gpu=GPU, cpu=4.0, memory=16384, timeout=30 * 60, volumes={DATA: volume})
+def kp_probe(repo: str, clip: str, times: list) -> dict:
+    """Try a pitch-keypoint model from Hugging Face on frames of a test clip: its model card, the raw keypoints and
+    the frames with the keypoints drawn and numbered"""
+    import cv2
+    from huggingface_hub import snapshot_download
+    from ultralytics import YOLO
+    d = Path(snapshot_download(repo, allow_patterns=["*.pt", "*.md", "*.yaml", "*.json", "*.txt"]))
+    out = {"files.txt": "\n".join(str(f.relative_to(d)) + f" {f.stat().st_size}" for f in d.rglob("*") if f.is_file()).encode()}
+    for f in d.rglob("*.md"): out["card_" + f.name] = f.read_bytes()
+    for f in d.rglob("*.yaml"): out["cfg_" + f.name] = f.read_bytes()
+    pts = sorted(d.rglob("*.pt"), key=lambda f: -f.stat().st_size)
+    if not pts: return out
+    m = YOLO(str(pts[0])); res = {"weights": str(pts[0].relative_to(d)), "names": m.names, "frames": {}}
+    cap = cv2.VideoCapture(str(CLIP.parent / clip))
+    for t in times:
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000); ok, fr = cap.read()
+        if not ok: continue
+        r = m.predict(fr, imgsz=640, conf=0.25, verbose=False)[0]
+        k = r.keypoints
+        xy = k.xy.cpu().numpy().tolist() if k is not None else []
+        cf = k.conf.cpu().numpy().tolist() if k is not None and k.conf is not None else []
+        res["frames"][str(t)] = {"boxes": r.boxes.data.cpu().numpy().tolist(), "xy": xy, "conf": cf}
+        for inst in range(len(xy)):
+            for j, (x, y) in enumerate(xy[inst]):
+                c = cf[inst][j] if cf else 1.0
+                if c < 0.5 or (x == 0 and y == 0): continue
+                cv2.circle(fr, (int(x), int(y)), 6, (0, 0, 255), -1)
+                cv2.putText(fr, str(j), (int(x) + 6, int(y) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+        ok, jpg = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 80]); out[f"kp_{t:07.2f}.jpg"] = jpg.tobytes()
+    out["kp.json"] = json.dumps(res).encode()
+    return out
+
+
 @app.local_entrypoint()
 def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = "",
-         clip: str = "clip.mp4", keep: str = ""):
+         clip: str = "clip.mp4", keep: str = "", kp: str = ""):
+    if kp:
+        dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
+        for name, data in kp_probe.remote(kp, clip, [float(t) for t in times.split(",") if t.strip()]).items():
+            (dest / name).write_bytes(data)
+        return
     if hf:
         dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
         (dest / "hf_search.json").write_text(json.dumps(hf_search.remote(hf.split("|")), indent=1))
