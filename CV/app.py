@@ -33,7 +33,7 @@ def origin_allowed(origin: str, host: str) -> bool:
 async def guard_requests(request: Request, call_next):
     # CORS only hides responses; this stops other websites from starting, cancelling or overwriting uploads
     origin = request.headers.get("origin")
-    if request.method in ("POST", "PUT") and origin and not origin_allowed(origin, request.headers.get("host", "")):
+    if request.method in ("POST", "PUT", "DELETE") and origin and not origin_allowed(origin, request.headers.get("host", "")):
         return JSONResponse({"error": "This site is not allowed to use the engine."}, status_code=403)
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
