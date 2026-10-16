@@ -100,7 +100,7 @@ def test_hands_analyses_to_a_remote_worker(client):
         assert client.get("/api/info").json() == {"device": "NVIDIA A10 (test)", "gpu": True}
         (app.UPLOAD_DIR / "source_match.mp4").write_bytes(b"video")
         r = client.post("/api/start-analysis", data={"fileName": "source_match.mp4", "mode": "fast", "targetRes": "720p"})
-        assert r.status_code == 200 and w.started[1:] == ("fast", "720p", True, True)
+        assert r.status_code == 200 and w.started[1:] == ("fast", "720p", True, True, None)
         assert w.started[0].endswith("source_match.mp4")
         w.remote = {"status": "processing", "progress": 42.0}
         assert client.get("/api/status").json()["progress"] == 42.0
@@ -127,7 +127,7 @@ def test_hands_analyses_to_a_remote_worker(client):
         assert client.get("/api/info").json() == {"device": "NVIDIA A10 (test)", "gpu": True}
         (app.UPLOAD_DIR / "source_match.mp4").write_bytes(b"video")
         r = client.post("/api/start-analysis", data={"fileName": "source_match.mp4", "mode": "fast", "targetRes": "720p"})
-        assert r.status_code == 200 and w.started[1:] == ("fast", "720p", True, True)
+        assert r.status_code == 200 and w.started[1:] == ("fast", "720p", True, True, None)
         assert w.started[0].endswith("source_match.mp4")
         w.remote = {"status": "processing", "progress": 42.0}
         assert client.get("/api/status").json()["progress"] == 42.0
@@ -148,3 +148,17 @@ def test_score_reader_turns_score_changes_into_goals(client):
     assert sr.goals() == [(200, 0), (650, 1)]
     assert app._score_of("05:04 ROM 0-0 INT") == (0, 0) and app._score_of("32:07") is None
 
+
+
+def test_team_picker_clicks_reach_the_analysis(client):
+    import app, json as js
+    w = app.WORKER = FakeWorker()
+    try:
+        (app.UPLOAD_DIR / "source_match.mp4").write_bytes(b"video")
+        kits = [{"t": 12.5, "x": 0.4, "y": 0.5, "role": "home"}, {"t": 12.5, "x": 0.6, "y": 0.5, "role": "away"},
+                {"t": 12.5, "x": 2, "y": 0.5, "role": "ref"}, {"t": 1, "x": 0.1, "y": 0.1, "role": "coach"}]
+        r = client.post("/api/start-analysis", data={"fileName": "source_match.mp4", "kits": js.dumps(kits)})
+        assert r.status_code == 200
+        assert [k["role"] for k in w.started[5]] == ["home", "away"]          # off-frame and unknown roles dropped
+    finally:
+        app.WORKER = None; app.JOB_STATE.update(status="idle")

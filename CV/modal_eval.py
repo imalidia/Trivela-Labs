@@ -24,10 +24,10 @@ WORKSPACES = {"live": Path(DATA) / "workspace", "eval": Path(DATA) / "eval" / "w
 
 @app.function(gpu=GPU, cpu=8.0, memory=16384, timeout=2 * 60 * 60, volumes={DATA: volume},
               env={"TRIVELA_WORKSPACE": str(WORKSPACES["eval"])})
-def rerun(mode: str, res: str, clip: str = "clip.mp4") -> dict:
+def rerun(mode: str, res: str, clip: str = "clip.mp4", kits: list = None) -> dict:
     volume.reload()
     engine = load_engine()
-    engine.process_football_match(str(CLIP.parent / clip), mode, res, True, True)
+    engine.process_football_match(str(CLIP.parent / clip), mode, res, True, True, kits)
     volume.commit()
     return {k: v for k, v in engine.JOB_STATE.items()}
 
@@ -123,7 +123,9 @@ def kp_probe(repo: str, clip: str, times: list) -> dict:
 
 @app.local_entrypoint()
 def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = "",
-         clip: str = "clip.mp4", keep: str = "", kp: str = ""):
+         clip: str = "clip.mp4", keep: str = "", kp: str = "", kits: str = ""):
+    # kits: team-picker clicks as role:t:x:y,... (x, y as shares of the frame)
+    kl = [{"role": r, "t": float(t), "x": float(x), "y": float(y)} for r, t, x, y in (k.split(":") for k in kits.split(",") if k)] or None
     if kp:
         dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
         for name, data in kp_probe.remote(kp, clip, [float(t) for t in times.split(",") if t.strip()]).items():
@@ -133,7 +135,7 @@ def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "
         dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
         (dest / "hf_search.json").write_text(json.dumps(hf_search.remote(hf.split("|")), indent=1))
         return
-    state = rerun.remote(rerun_mode, res, clip) if rerun_mode else None
+    state = rerun.remote(rerun_mode, res, clip, kl) if rerun_mode else None
     files = snapshot.remote("eval" if rerun_mode else "live", [float(t) for t in times.split(",") if t.strip()], export, keep, clip if export else "")
     dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
     for name, data in files.items(): (dest / name).write_bytes(data)

@@ -289,9 +289,18 @@
     await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, total - 1) }, worker));
   }
 
-  /* mode: fast | balanced | ultra. Graphics are burned into the video, which is what the report's Video tab plays */
-  const start = (base, { mode = 'balanced', res = '720p' } = {}) =>
-    call(base, '/api/start-analysis', { method: 'POST', body: form({ fileName: 'source_match.mp4', targetRes: res, mode, source: 'upload', burn: '1' }) });
+  /* mode: fast | balanced | ultra. Graphics are burned into the video, which is what the report's Video tab plays.
+     kits: the team picker's clicks [{ t, x, y, role: home | away | ref }] (x, y as shares of the frame), or null */
+  const start = (base, { mode = 'balanced', res = '720p', kits = null } = {}) =>
+    call(base, '/api/start-analysis', { method: 'POST', body: form({ fileName: 'source_match.mp4', targetRes: res, mode, source: 'upload', burn: '1',
+      kits: kits && kits.length ? JSON.stringify(kits) : '' }) });
+
+  /* A frame of the uploaded video for the team picker: { url (object URL), t, duration } in seconds; t < 0 = a third in */
+  async function uploadFrame(base, t = -1) {
+    const res = await fetch(`${base}/api/upload-frame?t=${encodeURIComponent(t)}`, { cache: 'no-store' });
+    if (!res.ok) throw Object.assign(new Error(`Model server error ${res.status}`), { status: res.status });
+    return { url: URL.createObjectURL(await res.blob()), t: num(res.headers.get('X-Time')), duration: num(res.headers.get('X-Duration')) };
+  }
 
   /* Saved analyses live on the engine (its Docker volume), so every browser and the AI coach see the same ones */
   const analyses = base => call(base, '/api/analyses');
@@ -301,7 +310,7 @@
   /* The engine set at deploy time (config.js; the engine's own copy of the site points at itself), else the one saved in this browser */
   const configuredBase = () => normalizeBase((root.TRIVELA_CONFIG || {}).engineUrl) || getBase();
 
-  const api = { STAT_DEFS, normalizeBase, phaseStep, toReport, getBase, setBase, configuredBase, info, status, summary, cancel, videoUrl, upload, start,
+  const api = { STAT_DEFS, normalizeBase, phaseStep, toReport, getBase, setBase, configuredBase, info, status, summary, cancel, videoUrl, upload, start, uploadFrame,
     analyses, analysis, saveAnalysis };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrivelaEngine = api;

@@ -770,8 +770,11 @@ function confirmSheet() {
     <div class="team-row field"><div class="field" style="margin:0"><label for="homeName">Home team</label><input class="input" id="homeName" value="Trivela FC" maxlength="60" autocomplete="off"></div>${sw(homeSw, 'home')}</div>
     <div class="team-row field"><div class="field" style="margin:0"><label for="awayName">Away team</label><input class="input" id="awayName" value="Riverside Athletic" maxlength="60" autocomplete="off"></div>${sw(awaySw, 'away')}</div>
     <p class="hint">${real ? 'Tap a swatch to change a team\'s color.' : 'Colors detected automatically. Tap a swatch to change it.'}</p>
-    ${real ? `<div class="field"><label>Which team wears the darker shirts?</label>${tabs([['a', 'Home team'], ['b', 'Away team']], 'a', 'kit')}</div>
-    <p class="hint" style="margin-top:-8px">The model splits the players by shirt brightness, so this tells it which group is which.</p>
+    ${real ? `<div class="field"><label id="kitLab">Show the model who is who</label>
+      <div class="kitpick" id="kitpick"><img id="kitimg" alt="A frame of your video: click the players"><div id="kitmarks"></div></div>
+      <div class="kitpick-bar"><span id="kitstep" aria-live="polite">Loading a frame…</span>
+        <button class="btn btn-ghost" id="kitframe" type="button">Another frame</button><button class="btn btn-ghost" id="kitreset" type="button">Start over</button></div></div>
+    <div class="field" id="kitFallback" hidden><label>Which team wears the darker shirts?</label>${tabs([['a', 'Home team'], ['b', 'Away team']], 'a', 'kit')}</div>
     <div class="field"><label>Detail</label>${tabs([['fast', 'Fast'], ['balanced', 'Balanced'], ['ultra', 'Best, slowest']], 'balanced', 'mode')}</div>`
     : `<div class="field"><label>Which half is this?</label>${tabs([['1', 'First half'], ['2', 'Second half'], ['full', 'Full match']], 'full', 'half')}</div>`}
     <button class="btn btn-primary btn-lg" id="start" style="width:100%">Start analysis</button>`, 'Confirm teams');
@@ -783,12 +786,49 @@ function confirmSheet() {
   const chosen = n => { const b = document.querySelector(`[data-${n}][aria-selected="true"]`); return b && b.dataset[n]; };
   $('#cancelSheet').onclick = closeSheet;
   setTimeout(placePills, 80);
+  const kits = real ? kitPicker(picked) : null;
   $('#start').onclick = () => {
     const home = $('#homeName').value.trim(), away = $('#awayName').value.trim();
     if (!home || !away) { ($('#homeName').value.trim() ? $('#awayName') : $('#homeName')).focus(); toast('Add a name for both teams.'); return; }
-    const engineOpts = real ? { homeKit: chosen('kit') || 'a', mode: chosen('mode') || 'balanced' } : null;
+    if (kits && !kits.failed() && !kits.done()) { toast('Click one home player and one away player on the frame first.'); return; }
+    const engineOpts = real ? { homeKit: chosen('kit') || 'a', mode: chosen('mode') || 'balanced', kits: kits && !kits.failed() ? kits.clicks() : null } : null;
     closeSheet(); startJob(home, away, picked.home, picked.away, engineOpts);
   };
+}
+
+/* Team picker: a frame of the upload; the user clicks one home player, one away player and (optionally) the referee.
+   The engine learns each kit from those shirts, so similar or striped kits and bright referee shirts are told apart */
+const KIT_STEPS = [['home', 'Click a home team player'], ['away', 'Click an away team player'], ['ref', 'Click the referee (or skip: Start analysis)']];
+function kitPicker(colors) {
+  let clicks = [], frame = null, failed = false, n = 0;
+  const step = $('#kitstep'), img = $('#kitimg'), marks = $('#kitmarks');
+  const paint = () => {
+    const s = KIT_STEPS[clicks.length];
+    step.textContent = s ? s[1] : 'Done. Start the analysis.';
+    marks.innerHTML = clicks.map(c => `<i class="kitmark" style="left:${c.x * 100}%;top:${c.y * 100}%;--c:${c.role === 'home' ? colors.home : c.role === 'away' ? colors.away : '#F2C200'}">${c.role === 'ref' ? 'R' : c.role === 'home' ? 'H' : 'A'}</i>`).join('');
+  };
+  const load = async t => {
+    step.textContent = 'Loading a frame…';
+    try {
+      const f = await E.uploadFrame(S.engine.base, t);
+      if (frame) URL.revokeObjectURL(frame.url);
+      frame = f; img.src = f.url; paint();
+    } catch (err) {
+      console.error(err); failed = true;
+      $('#kitpick').hidden = true; $('.kitpick-bar').hidden = true; $('#kitLab').hidden = true; $('#kitFallback').hidden = false; placePills();
+    }
+  };
+  img.onclick = e => {
+    if (!frame || clicks.length >= KIT_STEPS.length) return;
+    const r = img.getBoundingClientRect();
+    clicks.push({ t: frame.t, x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height, role: KIT_STEPS[clicks.length][0] });
+    paint();
+  };
+  $('#kitframe').onclick = () => { if (frame && frame.duration) load(((frame.duration / 3) + frame.duration * 0.137 * ++n) % frame.duration); };
+  $('#kitreset').onclick = () => { clicks = []; paint(); };
+  load(-1);
+  return { clicks: () => clicks.map(({ t, x, y, role }) => ({ t, x: +x.toFixed(4), y: +y.toFixed(4), role })),
+    done: () => clicks.length >= 2, failed: () => failed };
 }
 
 function startJob(home, away, hc, ac, engineOpts) {
@@ -817,7 +857,7 @@ async function runEngineJob(m, opts, source) {
   const open = () => go('match', { matchId: m.id, tab: 'overview', showAll: false });
   let report;
   try {
-    await E.start(base, { mode: opts.mode });
+    await E.start(base, { mode: opts.mode, kits: opts.kits });
     for (let fails = 0; ;) {
       await sleep(POLL_MS);
       let st;
@@ -830,7 +870,8 @@ async function runEngineJob(m, opts, source) {
       }
       if (st.status === 'completed') break;
     }
-    report = E.toReport(await E.summary(base), opts.homeKit, base);
+    const sum = await E.summary(base);
+    report = E.toReport(sum, (sum && sum.home_kit) || opts.homeKit, base);   // with the team picker, the engine knows the home kit
   } catch (err) {
     console.error(err);
     m.status = 'failed';

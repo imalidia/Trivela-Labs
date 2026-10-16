@@ -66,7 +66,7 @@ def load_engine():
 # ----------------------------------------------------------------------------
 @app.function(gpu=GPU, cpu=8.0, memory=16384, timeout=2 * 60 * 60, volumes={DATA: volume},
               max_containers=1, scaledown_window=10)
-def analyze(job: str, video: str, mode: str, res: str, burn: bool, reid: bool):
+def analyze(job: str, video: str, mode: str, res: str, burn: bool, reid: bool, kits: list = None):
     volume.reload()                                # see the upload web just committed
     engine = load_engine()
     J = engine.JOB_STATE
@@ -91,7 +91,7 @@ def analyze(job: str, video: str, mode: str, res: str, burn: bool, reid: bool):
 
     threading.Thread(target=pump, daemon=True).start()
     try:
-        engine.process_football_match(video, mode, res, burn, reid)   # catches its own errors into J
+        engine.process_football_match(video, mode, res, burn, reid, kits)   # catches its own errors into J
     finally:
         done.set()
         volume.commit()
@@ -111,14 +111,14 @@ class ModalWorker:
     def commit(self):
         volume.commit()
 
-    def start(self, video, mode, res, burn, reid):
+    def start(self, video, mode, res, burn, reid, kits=None):
         job = uuid.uuid4().hex
         s = dict(self.J, phase="Starting the GPU (about a minute)", job=job)
         try:
             volume.commit()                         # the upload, so the worker can read it
             jobs["cancel"] = ""
             jobs["state"] = s
-            jobs["call"] = analyze.spawn(job, video, mode, res, burn, reid).object_id
+            jobs["call"] = analyze.spawn(job, video, mode, res, burn, reid, kits).object_id
         except Exception as e:
             print("could not start the GPU worker:", e)
             s = dict(s, status="error", error_msg=f"Could not start the GPU: {e}")

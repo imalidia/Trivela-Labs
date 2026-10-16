@@ -247,6 +247,28 @@ class TeamModel:
     @property
     def ready(self): return self.centroids is not None
 
+    def seed(self, home, away, ref):
+        """Shirt colours from the user's clicks on one player of each team and the referee. Each team's colour is the
+        median of the sampled shirts nearest its click (so one shadowed frame doesn't decide it), Team A stays the darker
+        kit; returns "a"/"b" for the home team, or None without both clicks"""
+        out = None
+        if home is not None and away is not None:
+            c = np.array([home, away], np.float32)
+            if len(self.samples) >= 20:
+                X = np.array(self.samples, np.float32)
+                d = np.linalg.norm((X[:, None, :] - c[None, :, :]) * LABW, axis=2)
+                lim = 0.5 * float(np.linalg.norm((c[0] - c[1]) * LABW))
+                for k in (0, 1):
+                    near = X[(np.argmin(d, axis=1) == k) & (d[:, k] <= lim)]
+                    if len(near) >= 8: c[k] = np.median(near, axis=0)
+            order = np.argsort(c[:, 0])
+            self.centroids = c[order]
+            self.sep = max(1.0, float(np.linalg.norm((self.centroids[0] - self.centroids[1]) * LABW)))
+            out = "a" if order[0] == 0 else "b"
+        if ref is not None:
+            self.ref_c = np.asarray(ref, np.float32); self.ref_locked = True
+        return out
+
     def feature(self, frame, b):
         x1, y1, x2, y2 = [int(v) for v in b]
         w = max(1, x2 - x1); h = max(1, y2 - y1)
@@ -286,7 +308,7 @@ class TeamModel:
 
     def add_ref_sample(self, frame, box):
         """A confident detector 'referee' box: its shirt teaches the officials' colour (refit while it is still young)"""
-        if len(self.ref_samples) >= 400: return
+        if len(self.ref_samples) >= 400 or getattr(self, "ref_locked", False): return
         f = self.feature(frame, np.asarray(box).astype(int))
         if f is None: return
         self.ref_samples.append(f)
@@ -1887,7 +1909,7 @@ def burn_numbers(video, log_path, G, nums, kit, W, H, fps, audio_src, on_progres
 # ----------------------------------------------------------------------------
 # MAIN PIPELINE
 # ----------------------------------------------------------------------------
-def process_football_match(input_path: str, mode_key: str, res_key: str, burn: bool = True, reid: bool = True):
+def process_football_match(input_path: str, mode_key: str, res_key: str, burn: bool = True, reid: bool = True, kits=None):
     J = JOB_STATE
     cap = reader = enc = gz = dthread = None
     t_job = time.time()
@@ -1989,6 +2011,28 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             if len(team.samples) >= 60: team.fit()
             team.ref_samples = [f_ for f_ in team.ref_samples if f_ is not None]
             if len(team.ref_samples) >= REF_MIN_SAMPLES: team.ref_c = np.median(np.array(team.ref_samples, np.float32), axis=0)
+        home_kit = None
+        if kits:                                   # the user clicked a player of each team (and the referee) on a frame
+            picked = {}
+            cap2 = cv2.VideoCapture(src)
+            for k_ in kits:
+                cap2.set(cv2.CAP_PROP_POS_MSEC, float(k_["t"]) * 1000.0); ok, fr = cap2.read()
+                if not ok or fr is None: continue
+                fr = cv2.resize(fr, (W, H), interpolation=cv2.INTER_AREA)
+                px, py = float(k_["x"]) * W, float(k_["y"]) * H
+                bn = run_batch([fr])[0].boxes.cpu().numpy(); best = None
+                for xy, k in zip(bn.xyxy, bn.cls.astype(int)):
+                    if k in ball_ids: continue
+                    x1, y1, x2, y2 = xy; w_, h_ = x2 - x1, y2 - y1
+                    inside = x1 - 0.3 * w_ <= px <= x2 + 0.3 * w_ and y1 - 0.15 * h_ <= py <= y2 + 0.15 * h_
+                    d = math.hypot((x1 + x2) / 2 - px, (y1 + y2) / 2 - py)
+                    if inside and (best is None or d < best[0]): best = (d, xy.astype(int))
+                f = team.feature(fr, best[1]) if best is not None else None
+                if f is not None: picked.setdefault(k_["role"], []).append(f)
+            cap2.release()
+            med = lambda r: np.median(np.array(picked[r], np.float32), axis=0) if picked.get(r) else None
+            home_kit = team.seed(med("home"), med("away"), med("ref"))
+            print("kit clicks:", {r: len(v) for r, v in picked.items()}, "home kit:", home_kit)
         kit = team.kit_bgr(); tm["pre"] = time.time() - t_pre0; tm["gpu"] = 0.0; tm["batches"] = 0
 
         tracker, tracker_name = make_tracker(fps)
@@ -2350,6 +2394,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 "first_seen": {str(c): int(first_seen[c]) for c in real if c in first_seen},
                 "poss_events": poss.events, "events": events, "links": links, "shots": shots, "stats": stats,
                 "maps": ma["maps"] if ma else None, "pitch": ma["pitch"] if ma else None,
+                "home_kit": home_kit,
                 "role_debug": {"ref_c": None if team.ref_c is None else [round(float(v), 3) for v in np.ravel(team.ref_c)],
                                "centroids": [[round(float(v), 3) for v in row] for row in np.asarray(team.centroids)] if team.ready else None,
                                "sep": round(float(getattr(team, "sep", 0.0)), 3),
@@ -2537,9 +2582,45 @@ def safe_local_path(name: str):
             continue
     return None
 
+@app.get("/api/upload-frame")
+def upload_frame(t: float = -1.0):
+    """A frame of the uploaded video (JPEG, at most 1280 wide) for picking the teams; t < 0 = a third of the way in.
+    Headers: X-Duration (s) and X-Time (s) of the frame sent"""
+    video = UPLOAD_DIR / "source_match.mp4"
+    if not video.is_file(): raise HTTPException(status_code=404, detail="No uploaded video.")
+    cap = cv2.VideoCapture(str(video))
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0; n = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0
+        dur = n / fps if n > 0 else 0.0
+        t = dur / 3 if t < 0 else min(max(0.0, t), max(0.0, dur - 0.5))
+        cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0); ok, fr = cap.read()
+    finally:
+        cap.release()
+    if not ok or fr is None: raise HTTPException(status_code=422, detail="Could not read the video.")
+    if fr.shape[1] > 1280: fr = cv2.resize(fr, (1280, int(fr.shape[0] * 1280 / fr.shape[1])), interpolation=cv2.INTER_AREA)
+    ok, jpg = cv2.imencode(".jpg", fr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return Response(jpg.tobytes(), media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store", "X-Duration": f"{dur:.2f}", "X-Time": f"{t:.2f}",
+                             "Access-Control-Expose-Headers": "X-Duration, X-Time"})
+
+def parse_kits(raw: str):
+    """[{t, x, y, role}] from the team picker: x, y as shares of the frame, role home / away / ref"""
+    if not raw: return None
+    try: items = json.loads(raw)
+    except ValueError: return None
+    out = []
+    for it in items if isinstance(items, list) else []:
+        try:
+            k = {"t": float(it["t"]), "x": float(it["x"]), "y": float(it["y"]), "role": str(it["role"])}
+        except (KeyError, TypeError, ValueError):
+            continue
+        if k["role"] in ("home", "away", "ref") and 0 <= k["x"] <= 1 and 0 <= k["y"] <= 1 and k["t"] >= 0: out.append(k)
+    return out[:12] or None
+
 @app.post("/api/start-analysis")
 def start_analysis(background_tasks: BackgroundTasks, fileName: str = Form(...), targetRes: str = Form("1080p"),
-                   mode: str = Form("balanced"), source: str = Form("upload"), burn: str = Form("1"), reid: str = Form("1")):
+                   mode: str = Form("balanced"), source: str = Form("upload"), burn: str = Form("1"), reid: str = Form("1"),
+                   kits: str = Form("")):
     with JOB_LOCK:
         if job_state()["status"] in BUSY:
             return JSONResponse({"error": "An analysis is already running."}, status_code=409)
@@ -2554,7 +2635,7 @@ def start_analysis(background_tasks: BackgroundTasks, fileName: str = Form(...),
         JOB_CANCEL.clear()
         JOB_STATE.update(status="scanning", phase="Starting...", filename=video.name, total_frames=0, current_frame=0,
                          fps=0.0, progress=0.0, eta=0, video_url="", meta_url="", error_msg="")
-        args = (str(video), mode, targetRes, burn != "0", reid != "0")
+        args = (str(video), mode, targetRes, burn != "0", reid != "0", parse_kits(kits))
         if WORKER: WORKER.start(*args)
         else: background_tasks.add_task(process_football_match, *args)
     return {"status": "started"}
