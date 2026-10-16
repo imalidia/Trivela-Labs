@@ -63,6 +63,13 @@ def snapshot(source: str, times: list, export: bool = False, keep: str = "", exp
                             "-crf", "24", "-an", "/tmp/export.mp4"], check=True)
             out["clip.mp4"] = Path("/tmp/export.mp4").read_bytes()
         out["yolo-football-player-detection.pt"] = Path("/app/yolo-football-player-detection.pt").read_bytes()
+    ad = WORKSPACES["live"] / "analyses"           # the site's saved reports: name, size, time
+    if ad.is_dir():
+        import time as _t
+        rows = sorted(ad.glob("*.json"), key=lambda f: f.stat().st_mtime)
+        out["analyses.txt"] = "\n".join(f"{f.name} {f.stat().st_size} {_t.strftime('%Y-%m-%d %H:%M:%S', _t.gmtime(f.stat().st_mtime))}" for f in rows).encode()
+    up = WORKSPACES["live"] / "uploads" / "source_match.mp4"
+    if up.exists(): out["upload.txt"] = f"{up.stat().st_size} {up.stat().st_mtime}".encode()
     out["clip.txt"] = (f"clip: {CLIP} ({CLIP.stat().st_size} bytes)" if CLIP.exists() else "no test clip yet").encode()
     return out
 
