@@ -5,11 +5,17 @@ on:
   push:
     branches: [claude/modal-engine]
 
+permissions:
+  contents: write
+
 jobs:
   logs:
     if: contains(github.event.head_commit.message, '[logs')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: eval-data
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -21,7 +27,7 @@ jobs:
           TERM: dumb
           COLUMNS: "300"
         run: |
-          python - <<'PY'
+          { python - <<'PY'
           import modal, json
           d = modal.Dict.from_name("trivela-jobs")
           print("STATE:", json.dumps(d.get("state"), default=str)[:3000])
@@ -32,4 +38,6 @@ jobs:
           except Exception as e: print("CALL ERROR:", type(e).__name__, e)
           PY
           modal container list || true
-          timeout 45 modal app logs trivela 2>&1 | tail -150 || true
+          timeout 45 modal app logs trivela 2>&1 | tail -300 || true; } > logs.txt 2>&1
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add logs.txt; git commit -qm "logs ${{ github.sha }}"; git push -q origin HEAD:eval-data
