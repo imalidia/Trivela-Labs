@@ -306,13 +306,14 @@
   /* Saved analyses live on the engine (its Docker volume), so every browser and the AI coach see the same ones */
   const analyses = base => call(base, '/api/analyses');
   const analysis = (base, id) => call(base, `/api/analyses/${encodeURIComponent(id)}`);
+  const deleteAnalysis = (base, id) => call(base, `/api/analyses/${encodeURIComponent(id)}`, { method: 'DELETE' });
   const saveAnalysis = (base, row) => call(base, `/api/analyses/${encodeURIComponent(row.id)}`,
     { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row) });
   /* The engine set at deploy time (config.js; the engine's own copy of the site points at itself), else the one saved in this browser */
   const configuredBase = () => normalizeBase((root.TRIVELA_CONFIG || {}).engineUrl) || getBase();
 
   const api = { STAT_DEFS, normalizeBase, phaseStep, toReport, getBase, setBase, configuredBase, info, status, summary, cancel, videoUrl, analysisVideoUrl, upload, start, uploadFrame,
-    analyses, analysis, saveAnalysis };
+    analyses, analysis, saveAnalysis, deleteAnalysis };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrivelaEngine = api;
 })(typeof self !== 'undefined' ? self : this);

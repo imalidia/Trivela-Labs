@@ -237,3 +237,9 @@ footer .logo { color:#fff; font-size:22px } footer .logo img { width:44px; heigh
 @media (prefers-reduced-transparency: reduce) { .nav-in { background:#FFFFFF; -webkit-backdrop-filter:none; backdrop-filter:none } }
 @media (prefers-contrast: more) { .nav-in { background:#FFFFFF; -webkit-backdrop-filter:none; backdrop-filter:none; border-color:rgba(0,30,27,.35) } }
 @media (prefers-reduced-motion: reduce) { .nav-in::before { transition:none } }
+
+/* Delete button beside each saved analysis (outside the row link) */
+#rows > li[data-id] { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:4px }
+.del { display:grid; place-items:center; width:40px; height:40px; border:0; border-radius:12px; background:none; color:var(--ink-2); cursor:pointer; transition:background-color .2s, color .2s }
+.del:hover, .del:focus-visible { background:#FDECEA; color:#B3261E }
+.del:disabled { opacity:.4; cursor:progress }

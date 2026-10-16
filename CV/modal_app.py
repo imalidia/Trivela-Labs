@@ -153,6 +153,11 @@ class ModalWorker:
         except Exception as e:
             print("could not start the R2 upload:", e)
 
+    def delete_video(self, match_id):
+        self.on_r2.discard(match_id)
+        try: r2_client().delete_object(Bucket=os.environ["R2_BUCKET"], Key=r2_key(match_id))
+        except Exception as e: print("R2 delete failed:", e)
+
     def video_link(self, match_id):
         """A signed R2 link to an analysis' video, or None if it isn't there (yet)"""
         if match_id not in self.on_r2:

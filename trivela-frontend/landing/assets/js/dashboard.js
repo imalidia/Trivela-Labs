@@ -116,8 +116,25 @@ function row(m) {
       <span class="row-sub">${esc(m.date)} · ${m.kind} · ${m.mins} min</span></span>
     <span class="row-stats">${stats}</span>
     ${ready ? '<span class="chip ready">Ready</span>' : m.id === RUN_ID ? `<span class="chip busy">Analyzing <span class="num" data-run-pct>${pct()}%</span></span>` : '<span class="chip busy">Analyzing</span>'}
-    <span class="go">${ICON.arrow}</span></a></li>`;
+    <span class="go">${ICON.arrow}</span></a>${m.cloud ? `<button class="del" type="button" data-del="${esc(m.id)}" aria-label="Delete ${esc(m.home)} vs ${esc(m.away)}" title="Delete"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>` : ''}</li>`;
 }
+/* Delete a saved analysis (its stats, video and coach access) after a confirm */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  e.preventDefault();
+  const m = matches.find(x => x.id === b.dataset.del); if (!m) return;
+  if (!confirm(`Delete ${m.home} vs ${m.away}? Its stats and video are removed for good.`)) return;
+  b.disabled = true;
+  try {
+    await E.deleteAnalysis(BASE, m.id);
+    matches = matches.filter(x => x.id !== m.id);
+    activity = activity.filter(a => !a.text.includes(`${esc(m.home)} vs ${esc(m.away)}`) || matches.some(x => x.home === m.home && x.away === m.away));
+    renderAll(metaValues());
+    toast('Analysis deleted.');
+  } catch (err) {
+    console.error(err); b.disabled = false; toast(`Couldn't delete: ${esc(err.message)}`);
+  }
+});
 function renderAnalyses() {
   const q = query.trim().toLowerCase();
   const counts = { all: matches.length, ready: matches.filter(isReady).length, running: matches.filter(m => !isReady(m)).length };

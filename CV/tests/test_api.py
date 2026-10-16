@@ -173,3 +173,14 @@ def test_a_saved_analysis_keeps_its_own_video(client):
     r = client.get(f"/api/video/{mid}", headers={"Range": "bytes=10-19"})
     assert r.status_code == 206 and r.content == b"0123456789" and "immutable" in r.headers["cache-control"]
     assert client.get(f"/api/video/{uuid.uuid4()}").status_code == 404
+
+
+def test_deletes_a_saved_analysis_and_its_video(client):
+    import app, uuid
+    mid = str(uuid.uuid4())
+    (app.PROCESSED_DIR / "tactical_output.mp4").write_bytes(b"video")
+    client.put(f"/api/analyses/{mid}", json=ROW)
+    assert (app.VIDEOS_DIR / f"{mid}.mp4").exists()
+    assert client.delete(f"/api/analyses/{mid}").status_code == 200
+    assert client.get(f"/api/analyses/{mid}").status_code == 404 and not (app.VIDEOS_DIR / f"{mid}.mp4").exists()
+    assert client.delete(f"/api/analyses/{mid}").status_code == 404

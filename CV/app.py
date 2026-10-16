@@ -23,7 +23,7 @@ ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("TRIVELA_ALLOWE
 ANY_ORIGIN = "*" in ALLOWED_ORIGINS
 LOCAL_ORIGIN = r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
 app.add_middleware(CORSMiddleware, allow_origins=["*"] if ANY_ORIGIN else ALLOWED_ORIGINS,
-                   allow_origin_regex=None if ANY_ORIGIN else LOCAL_ORIGIN, allow_methods=["GET", "POST", "PUT"], allow_headers=["*"])
+                   allow_origin_regex=None if ANY_ORIGIN else LOCAL_ORIGIN, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["*"])
 
 def origin_allowed(origin: str, host: str) -> bool:
     if ANY_ORIGIN or origin.rstrip("/") in ALLOWED_ORIGINS or re.match(LOCAL_ORIGIN, origin): return True
@@ -2832,6 +2832,18 @@ async def save_analysis(match_id: str, request: Request):
         await asyncio.to_thread(WORKER.store_video, match_id)
     if WORKER: await asyncio.to_thread(WORKER.commit)
     return {"status": "saved", "id": match_id}
+
+@app.delete("/api/analyses/{match_id}")
+async def delete_analysis(match_id: str):
+    """Removes a saved analysis, its video copy here and its video on R2"""
+    path = analysis_path(match_id)
+    if not path.is_file(): raise HTTPException(status_code=404, detail="That analysis was not found.")
+    path.unlink(missing_ok=True)
+    (VIDEOS_DIR / f"{match_id}.mp4").unlink(missing_ok=True)
+    if WORKER:
+        if hasattr(WORKER, "delete_video"): await asyncio.to_thread(WORKER.delete_video, match_id)
+        await asyncio.to_thread(WORKER.commit)
+    return {"status": "deleted", "id": match_id}
 
 # ----------------------------------------------------------------------------
 # AI COACH: forwarded to the coach service (trivela-frontend/coach), which holds the model API key.
