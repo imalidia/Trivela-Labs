@@ -30,7 +30,7 @@ image = (
                   " | tar -xJ -C /usr/local --strip-components=1")
     .pip_install("torch", "torchvision", index_url="https://download.pytorch.org/whl/cu126")
     .pip_install("ultralytics", "fastapi", "uvicorn", "python-multipart", "pyyaml", "huggingface_hub", "scipy", "lap>=0.5.12",
-                 "pytesseract", "onnxruntime-gpu==1.22.0")   # 1.22: CUDA 12 + cuDNN 9, as torch cu126
+                 "pytesseract", "onnxruntime-gpu==1.22.0", "boto3")   # 1.22: CUDA 12 + cuDNN 9, as torch cu126
     # football detection weights, baked into the image
     .run_commands("mkdir -p /app && cd /app && python -c \"from huggingface_hub import hf_hub_download; "
                   "hf_hub_download(repo_id='martinjolif/yolo-football-player-detection', "
@@ -101,18 +101,70 @@ def analyze(job: str, video: str, mode: str, res: str, burn: bool, reid: bool, k
         report(final=True)
 
 
+# ----------------------------------------------------------------------------
+# Videos on Cloudflare R2 (Modal secret "trivela-r2": R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET).
+# Each saved analysis' annotated video is uploaded there; the site plays it from a short-lived signed link, so the
+# bucket stays private and playback comes from Cloudflare's network instead of this small web server.
+# ----------------------------------------------------------------------------
+r2_secret = modal.Secret.from_name("trivela-r2")
+R2_LINK_S = 6 * 3600
+
+def r2_client():
+    import boto3
+    from botocore.config import Config
+    return boto3.client("s3", endpoint_url=f"https://{os.environ['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com",
+                        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"], aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+                        region_name="auto", config=Config(signature_version="s3v4", retries={"max_attempts": 5}))
+
+def r2_key(match_id): return f"videos/{match_id}.mp4"
+
+@app.function(cpu=2.0, memory=2048, timeout=60 * 60, volumes={DATA: volume}, secrets=[r2_secret])
+def upload_video(match_id: str):
+    """The saved copy of an analysis' video (workspace/videos) -> R2, in parts so a full match goes up fine"""
+    from boto3.s3.transfer import TransferConfig
+    volume.reload()
+    src = Path(DATA) / "workspace" / "videos" / f"{match_id}.mp4"
+    if not src.is_file(): print("no video to upload for", match_id); return False
+    r2_client().upload_file(str(src), os.environ["R2_BUCKET"], r2_key(match_id),
+                            ExtraArgs={"ContentType": "video/mp4", "CacheControl": "public, max-age=604800, immutable"},
+                            Config=TransferConfig(multipart_threshold=64 * 2**20, multipart_chunksize=64 * 2**20, max_concurrency=8))
+    print("uploaded", match_id, src.stat().st_size, "bytes to R2")
+    return True
+
+
 class ModalWorker:
     """app.WORKER on the web server: hands jobs to analyze() and reads its progress back."""
     CHECK_EVERY = 15   # seconds between checks that a busy worker is still alive
 
     def __init__(self, J):
         self.J, self.last, self.checked = J, None, 0.0
+        self.on_r2 = set()                          # analyses whose video is known to be on R2
 
     def info(self):
         return {"device": f"NVIDIA {GPU} (Modal, starts when an analysis starts)", "gpu": True}
 
     def commit(self):
         volume.commit()
+
+    def store_video(self, match_id):
+        """After the web server saved a video copy: upload it to R2 in the background"""
+        try:
+            volume.commit(); upload_video.spawn(match_id)
+        except Exception as e:
+            print("could not start the R2 upload:", e)
+
+    def video_link(self, match_id):
+        """A signed R2 link to an analysis' video, or None if it isn't there (yet)"""
+        if match_id not in self.on_r2:
+            try:
+                c = r2_client(); c.head_object(Bucket=os.environ["R2_BUCKET"], Key=r2_key(match_id)); self.on_r2.add(match_id)
+            except Exception:
+                return None
+        try:
+            return r2_client().generate_presigned_url("get_object", Params={"Bucket": os.environ["R2_BUCKET"], "Key": r2_key(match_id)},
+                                                      ExpiresIn=R2_LINK_S)
+        except Exception as e:
+            print("R2 link failed:", e); return None
 
     def start(self, video, mode, res, burn, reid, kits=None):
         job = uuid.uuid4().hex
@@ -169,7 +221,7 @@ class ModalWorker:
 # One container, so uploads and progress live in one place; it sleeps after 5 idle minutes.
 # ----------------------------------------------------------------------------
 @app.cls(cpu=2.0, memory=2048, timeout=60 * 60, volumes={DATA: volume}, max_containers=1, scaledown_window=300,
-         secrets=[modal.Secret.from_name("trivela-coach")])
+         secrets=[modal.Secret.from_name("trivela-coach"), r2_secret])
 @modal.concurrent(max_inputs=100)
 class Web:
     @modal.enter()

@@ -9,13 +9,13 @@ The test clip is a copy of the first video found in the site's uploads, kept at 
 don't replace it. Reruns write to /data/eval/workspace, never over the site's own results.
 Output (written to --out): summary.json, the per-frame tracking data, a contact sheet and the requested frames.
 """
-import json, shutil, subprocess, sys
+import json, os, shutil, subprocess, sys
 from pathlib import Path
 
 import modal
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from modal_app import image, volume, DATA, GPU, load_engine
+from modal_app import image, volume, DATA, GPU, load_engine, r2_secret, r2_client, r2_key
 
 app = modal.App("trivela-eval", image=image.add_local_python_source("modal_app"))   # rerun imports it in the container
 CLIP = Path(DATA) / "eval" / "clip.mp4"
@@ -128,11 +128,29 @@ def kp_probe(repo: str, clip: str, times: list) -> dict:
     return out
 
 
+@app.function(cpu=2.0, timeout=30 * 60, volumes={DATA: volume}, secrets=[r2_secret])
+def r2check() -> dict:
+    """Uploads the newest saved video to R2 and plays the signed link back: proves the keys and the bucket work"""
+    import urllib.request
+    volume.reload()
+    vids = sorted((Path(DATA) / "workspace" / "videos").glob("*.mp4"), key=lambda f: f.stat().st_mtime)
+    if not vids: vids = [Path(DATA) / "workspace" / "processed" / "tactical_output.mp4"]
+    v = vids[-1]; mid = v.stem if v.parent.name == "videos" else "r2-check"; c = r2_client()
+    c.upload_file(str(v), os.environ["R2_BUCKET"], r2_key(mid), ExtraArgs={"ContentType": "video/mp4"})
+    url = c.generate_presigned_url("get_object", Params={"Bucket": os.environ["R2_BUCKET"], "Key": r2_key(mid)}, ExpiresIn=600)
+    r = urllib.request.urlopen(urllib.request.Request(url, headers={"Range": "bytes=0-1023"}), timeout=30)
+    return {"r2.txt": f"uploaded {mid} ({v.stat().st_size} bytes); signed link answered {r.status}, {len(r.read())} bytes".encode()}
+
+
 @app.local_entrypoint()
 def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = "",
-         clip: str = "clip.mp4", keep: str = "", kp: str = "", kits: str = ""):
+         clip: str = "clip.mp4", keep: str = "", kp: str = "", kits: str = "", r2: bool = False):
     # kits: team-picker clicks as role:t:x:y,... (x, y as shares of the frame)
     kl = [{"role": r, "t": float(t), "x": float(x), "y": float(y)} for r, t, x, y in (k.split(":") for k in kits.split(",") if k)] or None
+    if r2:
+        dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
+        for name, data in r2check.remote().items(): (dest / name).write_bytes(data)
+        return
     if kp:
         dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
         for name, data in kp_probe.remote(kp, clip, [float(t) for t in times.split(",") if t.strip()]).items():

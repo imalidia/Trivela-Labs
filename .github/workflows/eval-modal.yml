@@ -40,8 +40,9 @@ jobs:
           keep=$(printf '%s' "$tag" | grep -oE 'keep=[A-Za-z0-9_.-]+' | cut -d= -f2 || true)
           kp=$(printf '%s' "$tag" | grep -oE 'kp=[A-Za-z0-9_./-]+' | cut -d= -f2 || true)
           kits=$(printf '%s' "$tag" | grep -oE 'kits=[a-z0-9:.,]+' | cut -d= -f2 || true)
+          r2_flag=$(printf '%s' "$tag" | grep -qE '(\[eval| )r2(\]| )' && echo --r2 || true)
           hf=$(printf '%s' "$tag" | grep -oE 'hf="[^"]+"' | cut -d'"' -f2 || true)
-          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" $export_flag --hf "$hf" --clip "${clip:-clip.mp4}" --keep "$keep" --kp "$kp" --kits "$kits" --out eval-out > run.log 2>&1; then
+          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" $export_flag --hf "$hf" --clip "${clip:-clip.mp4}" --keep "$keep" --kp "$kp" --kits "$kits" $r2_flag --out eval-out > run.log 2>&1; then
             cat run.log
             echo "::error title=modal eval failed::$(tail -n 30 run.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             exit 1

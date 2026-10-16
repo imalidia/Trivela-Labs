@@ -2801,16 +2801,19 @@ MAX_VIDEOS = 30
 def keep_video(match_id: str):
     """On an analysis' first save: a copy of the video the engine just made, so the report can play it later"""
     src = PROCESSED_DIR / "tactical_output.mp4"
-    if not src.is_file() or time.time() - src.stat().st_mtime > 6 * 3600: return     # not this analysis' video
+    if not src.is_file() or time.time() - src.stat().st_mtime > 6 * 3600: return False   # not this analysis' video
     dst = VIDEOS_DIR / f"{match_id}.mp4"
     tmp = dst.with_suffix(".tmp"); shutil.copyfile(src, tmp); tmp.replace(dst)
     for old in sorted(VIDEOS_DIR.glob("*.mp4"), key=lambda f: f.stat().st_mtime)[:-MAX_VIDEOS]:
         old.unlink(missing_ok=True)
+    return True
 
 @app.get("/api/video/{match_id}")
 def analysis_video(match_id: str, request: Request):
     """The annotated video of a saved analysis, with range requests; it never changes, so browsers may cache it"""
     if not UUID_RE.match(match_id or ""): raise HTTPException(status_code=400, detail="Not a saved analysis id.")
+    link = WORKER.video_link(match_id) if WORKER and hasattr(WORKER, "video_link") else None
+    if link: return RedirectResponse(link, status_code=302, headers={"Cache-Control": "private, max-age=3600"})   # from R2
     return serve_mp4(VIDEOS_DIR / f"{match_id}.mp4", request, {"Cache-Control": "public, max-age=604800, immutable"})
 
 @app.put("/api/analyses/{match_id}")
@@ -2825,7 +2828,8 @@ async def save_analysis(match_id: str, request: Request):
     tmp.write_text(json.dumps(row), encoding="utf-8"); tmp.replace(path)
     for old in sorted(ANALYSES_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime)[:-MAX_ANALYSES]:
         old.unlink(missing_ok=True)
-    if first: await asyncio.to_thread(keep_video, match_id)
+    if first and await asyncio.to_thread(keep_video, match_id) and WORKER and hasattr(WORKER, "store_video"):
+        await asyncio.to_thread(WORKER.store_video, match_id)
     if WORKER: await asyncio.to_thread(WORKER.commit)
     return {"status": "saved", "id": match_id}
 
