@@ -1,10 +1,10 @@
-✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-4wki0aCcsLXmrKA1DAHr0n
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-5HBqZaq9ZrWrvVU9cj3BUe
 ✓ Created objects.
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
-├── ✓ Uploaded PythonPackage:modal_app
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
+├── ✓ Uploaded PythonPackage:modal_app
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
 ├── ✓ Created Function rerun.
 ├── ✓ Created Function snapshot.
@@ -20,6 +20,7 @@ WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quan
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+kit clicks: {'home': 1, 'away': 1} home kit: b
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
@@ -2391,7 +2392,10 @@ WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quan
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
-[perf] total 174.3s | warm-up+prepass 6.5s | detector GPU busy 125.9s in 796 batches | main waited on detector 20.5s | encoder back-pressure 0.2s | 54.8 fps | bottleneck: CPU tracking / drawing
-wrote ['clip.txt', 'frame_0200.00.jpg', 'sheet_01.jpg', 'summary.json', 'tactical_metadata.json.gz'] to eval-out
+WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+[perf] total 167.7s | warm-up+prepass 6.6s | detector GPU busy 120.7s in 796 batches | main waited on detector 23.3s | encoder back-pressure 0.2s | 56.9 fps | bottleneck: CPU tracking / drawing
+wrote ['clip.txt', 'frame_0030.00.jpg', 'frame_0120.00.jpg', 'frame_0200.00.jpg', 'frame_0300.00.jpg', 'sheet_01.jpg', 'summary.json', 'tactical_metadata.json.gz'] to eval-out
 Stopping app - local entrypoint completed.
-✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-4wki0aCcsLXmrKA1DAHr0n
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-5HBqZaq9ZrWrvVU9cj3BUe
