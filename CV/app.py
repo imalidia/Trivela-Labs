@@ -2087,16 +2087,17 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 bn = run_batch([fr])[0].boxes.cpu().numpy(); best = None
                 for xy, k in zip(bn.xyxy, bn.cls.astype(int)):
                     if k in ball_ids: continue
-                    x1, y1, x2, y2 = xy; w_, h_ = x2 - x1, y2 - y1
-                    inside = x1 - 0.3 * w_ <= px <= x2 + 0.3 * w_ and y1 - 0.15 * h_ <= py <= y2 + 0.15 * h_
-                    d = math.hypot((x1 + x2) / 2 - px, (y1 + y2) / 2 - py)
-                    if inside and (best is None or d < best[0]): best = (d, xy.astype(int))
+                    # the nearest person to the click, within half a body height of his box (players move a little
+                    # between the frame shown in the picker and the one read here)
+                    x1, y1, x2, y2 = xy; h_ = y2 - y1
+                    d = math.hypot(max(x1 - px, 0, px - x2), max(y1 - py, 0, py - y2))
+                    if d <= 0.5 * h_ and (best is None or d < best[0]): best = (d, xy.astype(int))
                 f = team.feature(fr, best[1]) if best is not None else None
                 if f is not None: picked.setdefault(k_["role"], []).append(f)
             cap2.release()
             med = lambda r: np.median(np.array(picked[r], np.float32), axis=0) if picked.get(r) else None
             home_kit = team.seed(med("home"), med("away"), med("ref"))
-            print("kit clicks:", {r: len(v) for r, v in picked.items()}, "home kit:", home_kit)
+            print("kit clicks:", {r: len(v) for r, v in picked.items()}, "of", len(kits), "home kit:", home_kit)
         kit = team.kit_bgr(); tm["pre"] = time.time() - t_pre0; tm["gpu"] = 0.0; tm["batches"] = 0
 
         tracker, tracker_name = make_tracker(fps)
