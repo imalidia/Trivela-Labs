@@ -69,7 +69,7 @@ CAM_SC = 0.25        # scale used for camera-motion estimation
 PLAYER_H_M = 1.78    # average player height (metres) used as a pixel->metre ruler
 SPRINT_MS = 7.0      # m/s (25.2 km/h): a sprint, measured on the speed over the last second
 SPRINT_END_MS = 6.0  # ...which ends once that speed drops below this
-SPRINT_MIN_S = 0.2   # a sprint counts once that 1-second speed has stayed above SPRINT_MS this long
+SPRINT_MIN_S = 0.5   # a sprint counts once that 1-second speed has stayed above SPRINT_MS this long
 MAX_RUN_MS = 10.4    # 37.4 km/h, about the fastest a footballer runs: faster readings are tracking glitches
 SPEED_WIN_S = 1.0    # speeds (top speed, sprints) are averaged over this window: single frames jitter
 STRIKE_KMH = 65.0    # smoothed ball speed that counts as a strike (a shot, cross, long ball or clearance)
@@ -298,7 +298,8 @@ class TeamModel:
         if self.ref_c is None: return False
         dr = float(np.linalg.norm((self.ref_c - f) * LABW))
         dt = float(np.min(np.linalg.norm((self.centroids - f) * LABW, axis=1)))
-        return dr < 0.75 * dt and dt > 0.4 * KIT_OUTLIER * self.sep
+        # a bright referee shirt can sit fairly close to a white kit: then being much nearer the officials' colour is enough
+        return dr < 0.75 * dt and (dt > 0.4 * KIT_OUTLIER * self.sep or dr < 0.45 * dt)
 
     def quick(self, frame, box):
         if not self.ready: return None
@@ -2138,11 +2139,13 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         if d_ is None: d_ = ground.metres(wpos[0] - w0[0], wpos[1] - w0[1], 0.5 * (fy + y0), 0.5 * (hh + h0))
                         sp = d_ / ((idx - f0) / fps)
                         if sp > MAX_RUN_MS:                      # an id that jumped to another player: start over
-                            hist.clear(); hist.append((idx, wpos.copy(), fy, hh)); ph["df"] = idx; ph["last_sp"] = 0.0
+                            hist.clear(); hist.append((idx, wpos.copy(), fy, hh)); ph["df"] = idx; ph["last_sp"] = ph["last_sp2"] = 0.0
                         else:
                             if sp >= 0.4: ph["dist"] += sp * min(idx - ph["df"], 0.5 * fps) / fps
                             ph["df"] = idx
-                            held = min(sp, ph.get("last_sp", 0.0)); ph["last_sp"] = sp
+                            # a top speed must hold over three readings in a row: one bad box or a pan glitch is no sprint
+                            held = min(sp, ph.get("last_sp", 0.0), ph.get("last_sp2", 0.0))
+                            ph["last_sp2"] = ph.get("last_sp", 0.0); ph["last_sp"] = sp
                             if held > ph["top"]: ph["top"] = held; ph["top_f"] = idx
                             if ph["on"]:
                                 ph["pk"] = max(ph["pk"], sp)
