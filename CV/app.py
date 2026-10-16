@@ -541,8 +541,20 @@ class IdentityManager:
         self.base = self.next_id
     def _mint(self, raw):
         cid = raw + self.base; self.next_id = max(self.next_id, cid + 1); return cid
-    def split(self, raw):
-        # the tracker kept this raw id on a different player: give him a new identity (own number range, no clashes)
+    def split(self, raw, f=None, box=None, lab=None, active=()):
+        """The tracker kept this raw id on a different player. He is most likely someone whose own track was just lost
+        (the two crossed): the nearest lost identity of his team takes him back, else he gets a new one"""
+        if box is not None:
+            h = float(max(1.0, box[3] - box[1])); x, y = (box[0] + box[2]) / 2, float(box[3])
+            best, bd = None, 9.0
+            for cid, i in self.info.items():
+                age = f - i["last"]
+                if cid in active or i["lab"] != lab or not 1 <= age <= self.max_age: continue
+                b = i["box"]; d = math.hypot((b[0] + b[2]) / 2 - x, b[3] - y) / max(h, i["h"])
+                lim = 1.5 + 3.0 * age / self.fps
+                if d <= lim and d / lim < bd: best, bd = cid, d / lim
+            if best is not None:
+                self.alias[raw] = best; self.relinked = getattr(self, "relinked", 0) + 1; return best
         self.splits = getattr(self, "splits", 0) + 1
         cid = SPLIT_BASE + self.splits; self.alias[raw] = cid; return cid
     def assign_new(self, f, fresh, active):
@@ -1449,6 +1461,7 @@ class DetectorThread:
 # the tesseract binary (pip pytesseract + apt tesseract-ocr) nothing is read and goals come from the ball alone.
 # ----------------------------------------------------------------------------
 SCORE_EVERY_S = 2.0
+SCORE_DOWN_READS = 5   # reads in a row before a lower score is believed (about 10 s)
 SCORE_BAND = 0.18        # the bug sits in the top 18% of the picture
 SCORE_RE = re.compile(r"(?<![\d:.])(\d{1,2}) ?[-\u2013\u2014] ?(\d{1,2})(?![\d:])")
 
@@ -1527,7 +1540,7 @@ class ScoreReader:
     def goals(self):
         """[(frame, side)]: side 0 = the score's left team, 1 = the right. A new score counts once read twice in a row;
         a score that goes back down (a goal ruled out) removes that side's last goal"""
-        reads = sorted(self.reads); out = []; cur = None; cand = None
+        reads = sorted(self.reads); out = []; cur = None; cand = None; n = 0
         for idx, a, b in reads:
             sc = (a, b)
             if cur is None:
@@ -1535,7 +1548,11 @@ class ScoreReader:
                 else: cand = (idx, sc)
                 continue
             if sc == cur: cand = None; continue
-            if cand is None or cand[1] != sc: cand = (idx, sc); continue
+            if cand is None or cand[1] != sc: cand = (idx, sc); n = 1; continue
+            n += 1
+            # a goal needs 2 reads in a row; a lower score (a goal ruled out) needs 5, since a 3 misread as 2 looks the same
+            down = sc[0] < cur[0] or sc[1] < cur[1]
+            if n < (SCORE_DOWN_READS if down else 2): continue
             f0, (na, nb) = cand; cand = None
             if na >= cur[0] and nb >= cur[1] and (na - cur[0]) + (nb - cur[1]) <= 2:
                 out += [(f0, 0)] * (na - cur[0]) + [(f0, 1)] * (nb - cur[1])
@@ -1956,6 +1973,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                                       "lab": plab or team.quick(frame, box), "app": appearance(frame, box, grass),
                                       "wpos": np.array([(box[0] + box[2]) / 2 - cam.cum[0], box[3] - cam.cum[1]], np.float32)})
                 ident.assign_new(idx, fresh, {ident.alias[r_[0]] for r_ in rows if r_[0] in ident.alias})
+                act_now = {ident.alias[r_[0]] for r_ in rows if r_[0] in ident.alias}
                 used = set(); boxes_now = {}
                 for raw, box, k, plab, bconf in rows:
                     cid = ident.alias.get(raw)
@@ -1965,7 +1983,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                         team.add_ref_sample(frame, box)
                     lab = team.label_for(cid, frame, box.astype(int), idx, "ref" if k in ref_ids else "gk" if k in gk_ids else None)
                     if team.flipped:                     # shirt changed team: the tracker slid onto another player
-                        old = cid; cid = ident.split(raw); used.add(cid); team.hand_over(old, cid, lab); splits_n += 1
+                        old = cid; cid = ident.split(raw, idx, box, lab, act_now | used); used.add(cid); team.hand_over(old, cid, lab); splits_n += 1
                     h = float(max(1.0, box[3] - box[1]))
                     wpos = np.array([(box[0] + box[2]) / 2 - cam.cum[0], box[3] - cam.cum[1]], np.float32)
                     clean = idx - ident.last_ov.get(cid, -999) > 12
@@ -2186,7 +2204,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             "ball_visible_pct": round(100.0 * ball_seen / max(1, wide_frames), 1),
             "ball_max_kmh": round(ball_max, 1), "ball_avg_kmh": round(ball_sum / max(1, ball_n), 1),
             "strikes": strikes, "sprints": sum(1 for e_ in xev if e_[1] == "sprint"), "swaps_fixed": swaps_n,
-            "ids_split": splits_n,
+            "ids_split": splits_n, "ids_relinked": getattr(ident, "relinked", 0),
             "wide_frames": wide_frames, "wide_pct": round(100.0 * wide_frames / max(1, idx + 1), 1),
             "players": pl, "top_speeds": top_speeds,
             "sprint_kmh_a": round(spk[0][0] / spk[0][1] * 3.6, 1) if spk[0][1] else 0.0,

@@ -140,8 +140,10 @@ def test_hands_analyses_to_a_remote_worker(client):
 def test_score_reader_turns_score_changes_into_goals(client):
     import app
     sr = app.ScoreReader.__new__(app.ScoreReader)
-    # a misread first frame, 0-0, a one-off misread, two goals for the left side, a goal ruled out, one for the right
+    # a misread first frame, 0-0, a one-off misread, two goals for the left side, a goal ruled out (shown for a while),
+    # one for the right; then a 1 misread as 0 twice, which is no goal ruled out
     sr.reads = [(0, 5, 2), (50, 0, 0), (100, 0, 0), (150, 7, 0), (200, 1, 0), (250, 1, 0), (300, 2, 0), (350, 2, 0),
-                (400, 1, 0), (450, 1, 0), (500, 1, 1), (550, 1, 1)]
-    assert sr.goals() == [(200, 0), (500, 1)]
+                (400, 1, 0), (450, 1, 0), (500, 1, 0), (550, 1, 0), (600, 1, 0), (650, 1, 1), (700, 1, 1),
+                (750, 1, 0), (800, 1, 0), (850, 1, 1), (900, 1, 1)]
+    assert sr.goals() == [(200, 0), (650, 1)]
     assert app._score_of("05:04 ROM 0-0 INT") == (0, 0) and app._score_of("32:07") is None
