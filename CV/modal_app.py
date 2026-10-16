@@ -30,7 +30,7 @@ image = (
                   " | tar -xJ -C /usr/local --strip-components=1")
     .pip_install("torch", "torchvision", index_url="https://download.pytorch.org/whl/cu126")
     .pip_install("ultralytics", "fastapi", "uvicorn", "python-multipart", "pyyaml", "huggingface_hub", "scipy", "lap>=0.5.12",
-                 "pytesseract", "onnxruntime-gpu")
+                 "pytesseract", "onnxruntime-gpu==1.22.0")   # 1.22: CUDA 12 + cuDNN 9, as torch cu126
     # football detection weights, baked into the image
     .run_commands("mkdir -p /app && cd /app && python -c \"from huggingface_hub import hf_hub_download; "
                   "hf_hub_download(repo_id='martinjolif/yolo-football-player-detection', "

@@ -571,6 +571,12 @@ class Embedder:
         self.ok = False; self.n = 0
         if not os.path.isfile(REID_MODEL): return
         try:
+            try:                                    # use the CUDA / cuDNN libraries that came with torch
+                import onnxruntime as ort
+                if hasattr(ort, "preload_dlls"): ort.preload_dlls()
+                print("re-id providers:", ort.get_available_providers())
+            except Exception as e:
+                print("onnxruntime preload:", e)
             from ultralytics.trackers.utils.reid import ReID
             self.m = ReID(REID_MODEL, fp16=HAS_GPU); self.ok = True
         except Exception as e:
