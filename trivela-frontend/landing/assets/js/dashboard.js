@@ -25,8 +25,8 @@ const MATCHES = [ /* newest first; pairs are [home, away] */
 ];
 const STEPS = ['Detecting players', 'Tracking the ball', 'Assigning teams', 'Detecting passes and shots', 'Computing stats'];
 
-/* The dashboard lists only the newest few analyses, and the newest few events in recent activity */
-const MAX_LISTED = 5, MAX_ACTIVITY = 6;
+/* The dashboard lists the newest 100 analyses (the engine keeps 200), and the newest few events in recent activity */
+const MAX_LISTED = 100, MAX_ACTIVITY = 6;
 
 let matches = MATCHES.slice(0, MAX_LISTED), runP = .62, filter = 'all', query = '';
 const isReady = m => m.status === 'ready';
