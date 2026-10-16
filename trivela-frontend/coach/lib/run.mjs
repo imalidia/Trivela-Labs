@@ -15,7 +15,7 @@ export class CoachError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-const TOPIC_SYSTEM = 'Decide whether the message is a question or request a football (soccer) match-statistics coach should answer: about this match\'s numbers, players, teams, tactics, or how to read a stat. Short follow-ups such as "why?" or "and the other team?" count as yes. General knowledge, other topics, coding, writing tasks, betting and anything else count as no.';
+const TOPIC_SYSTEM = 'Decide whether the message is a question or request a football (soccer) match-statistics coach should answer: about this match\'s numbers, players, teams, tactics, or how to read a stat. Short follow-ups such as "why?", "and the other team?" or just a team or player name answering the previous question count as yes. General knowledge, other topics, coding, writing tasks, betting and anything else count as no.';
 const TOPIC_SCHEMA = { type: 'object', properties: { about_the_match: { type: 'boolean' } }, required: ['about_the_match'], additionalProperties: false };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -53,9 +53,11 @@ export function createCoach({ api, models, log = () => {} }) {
   };
 
   /* Cheap gate against using the chat as a free general assistant. Fails open: the system prompt still refuses */
-  async function onTopic(question, usage) {
+  async function onTopic(question, usage, last = null) {
+    // a follow-up ("Trivela FC", "and the other team?") is judged with the question it answers
+    const content = last ? `Previous question in this chat: ${String(last).slice(0, 300)}\nNew message: ${question}` : question;
     try {
-      const r = await callModel(models.topicModel, { system: [{ text: TOPIC_SYSTEM }], messages: [{ role: 'user', content: question }],
+      const r = await callModel(models.topicModel, { system: [{ text: TOPIC_SYSTEM }], messages: [{ role: 'user', content }],
         max_tokens: 30, output_config: { format: { type: 'json_schema', schema: TOPIC_SCHEMA } } }, usage, TOPIC_TIMEOUT_MS);
       return parseJson(r.text).about_the_match !== false;
     } catch (err) {

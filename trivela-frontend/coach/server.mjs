@@ -100,7 +100,7 @@ async function chat(v, facts, rawQuestion, chatId) {
   if (turns.length >= LIMITS.questionsPerChat) throw new CoachError(429, `This chat has reached ${LIMITS.questionsPerChat} questions. Start a new one.`);
 
   const result = await booked(v, 'chat', async usage =>
-    (await coach.onTopic(check.text, usage)) ? { reply: await coach.answer(facts, turns, check.text, usage) } : { reply: OFF_TOPIC, offTopic: true });
+    (await coach.onTopic(check.text, usage, turns.length ? turns[turns.length - 1].q : null)) ? { reply: await coach.answer(facts, turns, check.text, usage) } : { reply: OFF_TOPIC, offTopic: true });
   if (result.offTopic) return { answer: result.reply, blocked: 'off_topic', chat_id: own ? chatId : null };
 
   const id = own ? chatId : randomUUID(), next = [...turns, { q: check.text, a: result.reply }];

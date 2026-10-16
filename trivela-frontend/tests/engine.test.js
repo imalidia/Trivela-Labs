@@ -138,13 +138,13 @@ test('pitch maps: home attacks left to right, so team B as home is turned 180 de
   assert.deepEqual(a.size, [3, 2]);
   assert.deepEqual(a.heat.home.all, HEAT_A);
   assert.deepEqual(a.passes, [[20, 30, 60, 30, 'home'], [80, 10, 70, 12, 'away']]);   // the official's (team 3) pass is dropped
-  assert.deepEqual(a.shots[0], { x: 94, y: 34, team: 'home', on: true, xg: 0.31, kmh: 88 });
+  assert.deepEqual(a.shots[0], { x: 94, y: 34, team: 'home', on: true, goal: false, xg: 0.31, kmh: 88 });
   assert.equal(a.anchored_pct, 62.5);
   const b = toReport(withAnalytics(), 'b').engine.maps;
   assert.deepEqual(b.heat.home.all, [99, 0, 0, 0, 0, 0].reverse());
   assert.deepEqual(b.heat.away.all, [...HEAT_A].reverse());
   assert.deepEqual(b.passes[0], [85, 38, 45, 38, 'away']);
-  assert.deepEqual(b.shots[1], { x: 85, y: 28, team: 'home', on: false, xg: 0.05, kmh: 70 });
+  assert.deepEqual(b.shots[1], { x: 85, y: 28, team: 'home', on: false, goal: false, xg: 0.05, kmh: 70 });
 });
 
 test('the summary passed in is never modified', () => {

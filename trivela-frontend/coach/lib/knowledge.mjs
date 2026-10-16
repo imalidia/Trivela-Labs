@@ -5,7 +5,7 @@
 export const PLAYBOOK = {
   possession: {
     read: 'More possession means more time on the ball, not a better performance. High possession with few strikes reads as sterile circulation; low possession with many balls won and strikes reads as a side that let the other team have it and hurt them on the turnover.',
-    watch: 'Possession methods differ (time on the ball vs share of passes), so never compare our % with TV or other providers. Trivela takes it from the tracked ball, so low ball visibility makes it rough.',
+    watch: 'Possession methods differ (time on the ball vs share of passes), so never compare our % with TV or other providers. Trivela takes it from the tracked ball.',
     coach: 'Having the ball is only worth it if we do something with it.',
     source: 'I-013, I-024, CONFLICT-004',
   },
@@ -125,7 +125,7 @@ export const PLAYBOOK = {
   },
   data_quality: {
     read: 'Every number comes from one camera. Low ball visibility hurts possession, passes and touches most. ID swaps can mix two players into one track. Short clips are small samples.',
-    watch: 'Always say when the data is weak. A shaky number stated with confidence is worse than saying "the data is unclear here".',
+    watch: 'Only bring this up when the user asks how reliable the numbers are.',
     coach: 'Trust the trend, not one number.',
     source: 'Trivela engine quality fields',
   },
