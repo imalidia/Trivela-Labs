@@ -1,5 +1,5 @@
 (() => {
-const DEMO = 'app.html#report', NEW = 'app.html#upload';
+const DEMO = 'analysis#report', NEW = 'analysis';
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const EASE_OUT = 'cubic-bezier(.23,1,.32,1)'; /* same as --ease-out */
 const $ = s => document.querySelector(s);
@@ -49,7 +49,7 @@ function fromRow(r) {
   return { id: r.id, cloud: true, seed: seedOf(r.id), home: r.home, away: r.away, date: dayLabel(r.created_at), when: whenLabel(r.created_at), kind: 'Model analysis',
     mins: Math.max(1, Math.round((r.duration_s || 0) / 60)), status: 'ready', score: null, poss: s.Possession || [50, 50], passes: s.Passes || [0, 0], shots: s.Shots || [0, 0] };
 }
-const hrefOf = m => (m.cloud ? `app.html#report/${m.id}` : DEMO);
+const hrefOf = m => (m.cloud ? `analysis#report/${m.id}` : DEMO);
 async function loadSaved() {
   if (!BASE) return;
   C.init(BASE);

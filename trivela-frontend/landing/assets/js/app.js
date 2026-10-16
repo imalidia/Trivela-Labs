@@ -334,7 +334,7 @@ function takeFile(name, bytes, file) {
 function vUpload() {
   const u = S.upload;
   return `<section class="hero compact" aria-labelledby="upH"><div class="lib-wrap">
-    <a class="mint-link back rise" href="dashboard.html" style="--i:0">${ICON.back} Dashboard</a>
+    <a class="mint-link back rise" href="dashboard" style="--i:0">${ICON.back} Dashboard</a>
     <div class="hero-grid"><div>
       <span class="eyebrow rise" style="--i:1">Step 1 of 3 · Upload</span>
       <h1 id="upH" class="rise" style="--i:2">New analysis</h1>
@@ -370,7 +370,7 @@ const STEPS = ['Detecting players', 'Tracking the ball', 'Assigning teams', 'Det
 function vProcessing() {
   const j = S.job;
   return `<section class="hero compact" aria-labelledby="prH"><div class="lib-wrap">
-    <a class="mint-link back rise" href="dashboard.html" style="--i:0">${ICON.back} Dashboard</a>
+    <a class="mint-link back rise" href="dashboard" style="--i:0">${ICON.back} Dashboard</a>
     <div class="hero-grid"><div>
       <span class="eyebrow rise" style="--i:1">Step 3 of 3 · Analyzing</span>
       <h1 id="prH" class="rise" style="--i:2">${esc(j.home)} <span style="color:var(--mint)">vs</span> ${esc(j.away)}</h1>
@@ -386,7 +386,7 @@ function vProcessing() {
       <p id="pTip" style="margin:8px 0 0;transition:opacity .25s ease">${esc(TIPS[tipAt])}</p></div>
     <ol class="psteps rise" style="--i:1">${STEPS.map((t, i) => `<li class="ps wait" data-ps="${i}"><span class="ps-dot" aria-hidden="true"></span>
       <div><span class="ps-label">${t}</span><span class="ps-bar"><i></i></span></div><span class="ps-pct num"></span></li>`).join('')}</ol>
-    <div class="proc-actions">${j.real ? '<button class="key soft sm" id="cancelJob">Cancel analysis</button>' : '<a class="key soft sm" href="dashboard.html">Back to dashboard</a>'}</div>
+    <div class="proc-actions">${j.real ? '<button class="key soft sm" id="cancelJob">Cancel analysis</button>' : '<a class="key soft sm" href="dashboard">Back to dashboard</a>'}</div>
   </div></section>`;
 }
 const engineEta = j => j.eta ? `About ${Math.max(1, Math.round(j.eta / 60))} min left` : j.p >= 1 ? 'Finishing up' : 'Warming up';
@@ -978,7 +978,7 @@ if (S.engine.base) connectEngine(S.engine.base, true);
   const open = v => { menu.hidden = !v; btn.setAttribute('aria-expanded', v); };
   const paint = () => {
     menu.innerHTML = (items.length ? items.map((m, i) => `<button class="recent-item" role="menuitem" data-i="${i}"><span><b>${esc(m.home)} ${m.ready && m.score ? m.score[0] + '–' + m.score[1] : 'vs'} ${esc(m.away)}</b><small>${esc(m.date)}</small></span><span class="recent-chip${m.ready ? '' : ' busy'}">${m.ready ? 'Ready' : 'Analyzing'}</span></button>`).join('')
-      : '<div class="recent-empty">No analyses yet.</div>') + '<a class="recent-all" role="menuitem" href="dashboard.html#analyses">See all analyses</a>';
+      : '<div class="recent-empty">No analyses yet.</div>') + '<a class="recent-all" role="menuitem" href="dashboard#analyses">See all analyses</a>';
   };
   const load = async () => {
     if (items) return;

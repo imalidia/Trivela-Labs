@@ -2543,6 +2543,14 @@ if (WEB_DIR / "app.html").is_file():
     def web_config():
         return Response("window.TRIVELA_CONFIG = { engineUrl: location.origin };", media_type="application/javascript",
                         headers={"Cache-Control": "no-store"})
+    # clean page addresses, as on the Vercel site (vercel.json)
+    @app.get("/web/analysis", response_class=HTMLResponse)
+    def web_analysis():
+        return (WEB_DIR / "app.html").read_text(encoding="utf-8")
+
+    @app.get("/web/dashboard", response_class=HTMLResponse)
+    def web_dashboard():
+        return (WEB_DIR / "dashboard.html").read_text(encoding="utf-8")
     app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 @app.get("/trivela")
