@@ -2348,6 +2348,11 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 "first_seen": {str(c): int(first_seen[c]) for c in real if c in first_seen},
                 "poss_events": poss.events, "events": events, "links": links, "shots": shots, "stats": stats,
                 "maps": ma["maps"] if ma else None, "pitch": ma["pitch"] if ma else None,
+                "role_debug": {"ref_c": None if team.ref_c is None else [round(float(v), 3) for v in np.ravel(team.ref_c)],
+                               "centroids": [[round(float(v), 3) for v in row] for row in np.asarray(team.centroids)] if team.ready else None,
+                               "sep": round(float(getattr(team, "sep", 0.0)), 3),
+                               "tracks": [[int(c), G(c), dict(team.roles[c]), int(team.nvotes[c]), int(team.noff[c]), int(team.nref[c])]
+                                          for c in sorted(team.roles, key=lambda c: -sum(team.roles[c].values()))[:80]]},
                 "score": {"ocr": score.ok, "reads": len(score.reads), "sample": score.reads[:: max(1, len(score.reads) // 40)],
                           "goals": goals}}
         el_ = max(1e-3, time.time() - t_job)
