@@ -1,4 +1,4 @@
-✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-ODQTTdpsaW0ibUytYSGBdj
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-4wki0aCcsLXmrKA1DAHr0n
 ✓ Created objects.
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
@@ -2389,7 +2389,9 @@ WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quan
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
-[perf] total 202.5s | warm-up+prepass 7.7s | detector GPU busy 145.7s in 796 batches | main waited on detector 17.0s | encoder back-pressure 0.3s | 47.1 fps | bottleneck: CPU tracking / drawing
+WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
+[perf] total 174.3s | warm-up+prepass 6.5s | detector GPU busy 125.9s in 796 batches | main waited on detector 20.5s | encoder back-pressure 0.2s | 54.8 fps | bottleneck: CPU tracking / drawing
 wrote ['clip.txt', 'frame_0200.00.jpg', 'sheet_01.jpg', 'summary.json', 'tactical_metadata.json.gz'] to eval-out
 Stopping app - local entrypoint completed.
-✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-ODQTTdpsaW0ibUytYSGBdj
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-4wki0aCcsLXmrKA1DAHr0n
