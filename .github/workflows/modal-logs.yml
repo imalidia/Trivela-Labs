@@ -1,0 +1,35 @@
+name: Modal logs
+
+# Read-only look at the live engine: job state and recent logs. Runs when a commit message contains [logs].
+on:
+  push:
+    branches: [claude/modal-engine]
+
+jobs:
+  logs:
+    if: contains(github.event.head_commit.message, '[logs')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install modal
+      - env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          NO_COLOR: "1"
+          TERM: dumb
+          COLUMNS: "300"
+        run: |
+          python - <<'PY'
+          import modal, json
+          d = modal.Dict.from_name("trivela-jobs")
+          print("STATE:", json.dumps(d.get("state"), default=str)[:3000])
+          cid = d.get("call"); print("CALL:", cid)
+          try:
+              modal.FunctionCall.from_id(cid).get(timeout=0); print("CALL: finished")
+          except TimeoutError: print("CALL: still running")
+          except Exception as e: print("CALL ERROR:", type(e).__name__, e)
+          PY
+          modal container list || true
+          timeout 45 modal app logs trivela 2>&1 | tail -150 || true
