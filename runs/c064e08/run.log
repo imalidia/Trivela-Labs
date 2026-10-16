@@ -1,0 +1,13 @@
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-lcg6xkzQxp0KHXegIs63Y9
+✓ Created objects.
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
+├── ✓ Uploaded PythonPackage:modal_app
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
+├── ✓ Created Function rerun.
+├── ✓ Created Function snapshot.
+└── ✓ Created Function hf_search.
+Stopping app - local entrypoint completed.
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-lcg6xkzQxp0KHXegIs63Y9

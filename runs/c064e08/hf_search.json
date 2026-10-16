@@ -1,0 +1,20 @@
+{
+ "football field keypoint": [],
+ "soccer pitch keypoint": [],
+ "football-field-detection": [
+  {
+   "id": "Simon9/football-field-detection-roboflow",
+   "downloads": 0,
+   "likes": 2,
+   "license": "license:mit",
+   "files": [
+    [
+     "README.md",
+     2503
+    ]
+   ]
+  }
+ ],
+ "pitch keypoints yolo": [],
+ "soccer field detection": []
+}
