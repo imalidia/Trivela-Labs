@@ -1827,6 +1827,10 @@ def draw_radar(frame, dots, ball, kit):
     if ball is not None:
         c = P(*ball); cv2.circle(frame, c, max(2, r - 1), (0, 0, 0), -1, cv2.LINE_AA); cv2.circle(frame, c, max(1, r - 2), (255, 255, 255), -1, cv2.LINE_AA)
 
+def cam_view(pm, p):
+    # the radar in the video shows the pitch as the camera sees it, not turned so that team A attacks to the right
+    return (PITCH_L - p[0], PITCH_W - p[1]) if pm.flip else p
+
 def burn_numbers(video, log_path, G, nums, kit, W, H, fps, audio_src, on_progress=None, pm=None):
     """Second pass over the finished video: the final player numbers are only known after re-identification, so
     they are drawn here, from the frame log, and the video is replaced"""
@@ -1850,13 +1854,13 @@ def burn_numbers(video, log_path, G, nums, kit, W, H, fps, audio_src, on_progres
                             n = nums.get(G(c)); lab = lab_of.get(code, "team_a")
                             if n: draw_number(frame, (x1, y1, x2, y2), n, kit[lab], G(c) == car)
                             if pm is not None and lab != "official" and idx in pm.frame:
-                                x, y = pm.to_pitch(idx, (x1 + x2) / 2.0, y2); q = smooth.get(G(c))
+                                x, y = cam_view(pm, pm.to_pitch(idx, (x1 + x2) / 2.0, y2)); q = smooth.get(G(c))
                                 if q is not None and idx - q[2] <= 3:
                                     x, y = q[0] + RADAR_EMA * (x - q[0]), q[1] + RADAR_EMA * (y - q[1])
                                 smooth[G(c)] = (x, y, idx); dots.append((n, lab, x, y))
                         if pm is not None and idx in pm.frame:
                             b_ = r_.get("b")
-                            draw_radar(frame, dots, pm.to_pitch(idx, b_[0], b_[1]) if b_ else None, kit)
+                            draw_radar(frame, dots, cam_view(pm, pm.to_pitch(idx, b_[0], b_[1])) if b_ else None, kit)
                     nxt = fin.readline()
                 enc.write(frame); idx += 1
                 if on_progress and idx % 250 == 0: on_progress(idx / total)
