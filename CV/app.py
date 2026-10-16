@@ -222,7 +222,7 @@ ROLE_MIN = 10           # detections seen before that share is trusted
 KIT_DECAY = 0.85        # older kit votes fade, so a track that slid onto another player follows his shirt
 KIT_EVERY = 2           # detections between kit samples once a track has its first ones: quick to notice a slid track
 KIT_SETTLED = 3.0       # decayed vote weight that makes a team "settled" for a track
-REF_KIT_SHARE = 0.5     # share of a track's shirt samples nearest the officials' kit that makes it an official
+REF_KIT_SHARE = 0.4     # share of a track's shirt samples nearest the officials' kit that makes it an official
 REF_SAMPLE_CONF = 0.5   # detector "referee" boxes at least this sure teach the engine the officials' kit...
 REF_MIN_SAMPLES = 12    # ...once there are this many (a few stray "referee" boxes are ball boys, stewards, keepers)
 
@@ -298,7 +298,7 @@ class TeamModel:
         if self.ref_c is None: return False
         dr = float(np.linalg.norm((self.ref_c - f) * LABW))
         dt = float(np.min(np.linalg.norm((self.centroids - f) * LABW, axis=1)))
-        return dr < 0.6 * dt and dt > 0.5 * KIT_OUTLIER * self.sep
+        return dr < 0.75 * dt and dt > 0.4 * KIT_OUTLIER * self.sep
 
     def quick(self, frame, box):
         if not self.ready: return None
@@ -354,7 +354,8 @@ class TeamModel:
         if n >= ROLE_MIN:
             if r["gk"] >= ROLE_SHARE * n: return "goalkeeper"
             # a player the detector now and then calls "referee" keeps his team when his shirt is clearly a kit
-            if r["ref"] >= ROLE_SHARE * n and (nv < OFF_KIT_MIN or self.noff[cid] >= 0.3 * nv): return "official"
+            if r["ref"] >= ROLE_SHARE * n and (nv < OFF_KIT_MIN or self.noff[cid] >= 0.3 * nv or self.nref[cid] >= 0.25 * nv):
+                return "official"
         elif role:                                                # too new to judge: trust this detection
             return "official" if role == "ref" else "goalkeeper"
         team = max(("team_a", "team_b"), key=lambda t: c[t])
@@ -1630,7 +1631,7 @@ class KeypointReader:
     """Pitch keypoints on sampled frames in a worker thread, on the GPU next to the detector"""
     def __init__(self, fps):
         self.every = max(1, int(round(KP_EVERY_S * fps))); self.H = {}; self.ok = False
-        self.q = queue.Queue(8); self.stop = False; self.tried = 0
+        self.q = queue.Queue(8); self.stop = False; self.tried = 0; self.last = None
         if not os.path.isfile(KP_MODEL_PATH): return
         try:
             self.model = YOLO(KP_MODEL_PATH); self.ok = True
@@ -1638,16 +1639,28 @@ class KeypointReader:
             print("pitch keypoint model not loaded:", e); return
         self.t = threading.Thread(target=self._run, daemon=True); self.t.start()
 
-    def offer(self, idx, frame):
+    def offer(self, idx, frame, cam=(0.0, 0.0)):
         if not self.ok or idx % self.every: return
         sc = min(1.0, 1280.0 / frame.shape[1])
         img = cv2.resize(frame, None, fx=sc, fy=sc, interpolation=cv2.INTER_AREA) if sc < 1.0 else frame.copy()
-        try: self.q.put_nowait((idx, img, sc))
+        try: self.q.put_nowait((idx, img, sc, (float(cam[0]), float(cam[1]))))
         except queue.Full: pass
+
+    def ground(self, idx, w0, w1, max_age):
+        """Metres between two camera-compensated ground points (wpos), both through the latest homography (one and
+        the same, so its refits add no jitter), or None without a recent one"""
+        last = self.last
+        if last is None or idx - last[0] > max_age: return None
+        _, Hm, (cx, cy) = last
+        q = Hm @ np.array([[w0[0] + cx, w1[0] + cx], [w0[1] + cy, w1[1] + cy], [1.0, 1.0]])
+        if np.any(np.abs(q[2]) < 1e-9): return None
+        x, y = q[0] / q[2], q[1] / q[2]
+        if not (np.all((-10 < x) & (x < PITCH_L + 10)) and np.all((-10 < y) & (y < PITCH_W + 10))): return None
+        return float(math.hypot(x[1] - x[0], y[1] - y[0]))
 
     def _run(self):
         while not self.stop or not self.q.empty():
-            try: idx, img, sc = self.q.get(timeout=0.5)
+            try: idx, img, sc, cam = self.q.get(timeout=0.5)
             except queue.Empty: continue
             try:
                 r = self.model.predict(img, imgsz=640, conf=0.25, half=HAS_GPU, device=DEVICE_TARGET, verbose=False)[0]
@@ -1656,7 +1669,7 @@ class KeypointReader:
                 if k is None or k.conf is None or len(k.xy) == 0: continue
                 j = int(np.argmax(r.boxes.conf.cpu().numpy())) if r.boxes is not None and len(r.boxes) else 0
                 Hm = kp_homography(k.xy[j].cpu().numpy() / sc, k.conf[j].cpu().numpy())
-                if Hm is not None: self.H[idx] = Hm
+                if Hm is not None: self.H[idx] = Hm; self.last = (idx, Hm, cam)
             except Exception as e:
                 print("pitch keypoints failed:", e)
 
@@ -2013,7 +2026,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             if item is None: break
             if "error" in item: raise item["error"]
             frame = item["frame"]; idx = item["idx"]
-            score.offer(idx, frame); kpr.offer(idx, frame)
+            score.offer(idx, frame); kpr.offer(idx, frame, cam.cum)
 
             if idx % 10 == 0:
                 el = time.time() - start; pf = (idx + 1) / (el + 1e-5)
@@ -2120,7 +2133,10 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                     while idx - hist[0][0] > SPEED_WIN_S * fps: hist.popleft()
                     f0, w0, y0, h0 = hist[0]
                     if idx - f0 >= 0.6 * SPEED_WIN_S * fps:
-                        sp = ground.metres(wpos[0] - w0[0], wpos[1] - w0[1], 0.5 * (fy + y0), 0.5 * (hh + h0)) / ((idx - f0) / fps)
+                        # from the pitch markings when they were read in the last 1.5 s, else the perspective estimate
+                        d_ = kpr.ground(idx, w0, wpos, 1.5 * fps)
+                        if d_ is None: d_ = ground.metres(wpos[0] - w0[0], wpos[1] - w0[1], 0.5 * (fy + y0), 0.5 * (hh + h0))
+                        sp = d_ / ((idx - f0) / fps)
                         if sp > MAX_RUN_MS:                      # an id that jumped to another player: start over
                             hist.clear(); hist.append((idx, wpos.copy(), fy, hh)); ph["df"] = idx; ph["last_sp"] = 0.0
                         else:
