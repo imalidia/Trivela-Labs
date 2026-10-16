@@ -36,8 +36,10 @@ jobs:
           times=$(printf '%s' "$tag" | grep -oE 'times=[0-9.,]+' | cut -d= -f2 || true)
           res=$(printf '%s' "$tag" | grep -oE 'res=[0-9a-z]+' | cut -d= -f2 || true)
           export_flag=$(printf '%s' "$tag" | grep -q 'export' && echo --export || true)
+          clip=$(printf '%s' "$tag" | grep -oE 'clip=[A-Za-z0-9_.-]+' | cut -d= -f2 || true)
+          keep=$(printf '%s' "$tag" | grep -oE 'keep=[A-Za-z0-9_.-]+' | cut -d= -f2 || true)
           hf=$(printf '%s' "$tag" | grep -oE 'hf="[^"]+"' | cut -d'"' -f2 || true)
-          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" $export_flag --hf "$hf" --out eval-out > run.log 2>&1; then
+          if ! modal run CV/modal_eval.py --rerun-mode "$mode" --res "${res:-1080p}" --times "$times" $export_flag --hf "$hf" --clip "${clip:-clip.mp4}" --keep "$keep" --out eval-out > run.log 2>&1; then
             cat run.log
             echo "::error title=modal eval failed::$(tail -n 30 run.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
             exit 1

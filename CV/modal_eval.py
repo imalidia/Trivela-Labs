@@ -3,6 +3,7 @@
   modal run CV/modal_eval.py                         snapshot of the last analysis made on the site
   modal run CV/modal_eval.py --rerun balanced        analyse the test clip again with this code (A10), then snapshot it
   --times 10,95.5                                    also grab full-size frames of the processed video at these seconds
+  --keep tactical.mp4 / --clip tactical.mp4          save the site's last upload as a test clip / rerun on that clip
 
 The test clip is a copy of the first video found in the site's uploads, kept at /data/eval/clip.mp4 so later uploads
 don't replace it. Reruns write to /data/eval/workspace, never over the site's own results.
@@ -23,18 +24,20 @@ WORKSPACES = {"live": Path(DATA) / "workspace", "eval": Path(DATA) / "eval" / "w
 
 @app.function(gpu=GPU, cpu=8.0, memory=16384, timeout=2 * 60 * 60, volumes={DATA: volume},
               env={"TRIVELA_WORKSPACE": str(WORKSPACES["eval"])})
-def rerun(mode: str, res: str) -> dict:
+def rerun(mode: str, res: str, clip: str = "clip.mp4") -> dict:
     volume.reload()
     engine = load_engine()
-    engine.process_football_match(str(CLIP), mode, res, True, True)
+    engine.process_football_match(str(CLIP.parent / clip), mode, res, True, True)
     volume.commit()
     return {k: v for k, v in engine.JOB_STATE.items()}
 
 
 @app.function(cpu=4.0, memory=8192, timeout=30 * 60, volumes={DATA: volume})
-def snapshot(source: str, times: list, export: bool = False) -> dict:
+def snapshot(source: str, times: list, export: bool = False, keep: str = "") -> dict:
     volume.reload()
     live_upload = WORKSPACES["live"] / "uploads" / "source_match.mp4"
+    if keep and live_upload.exists():               # keep the site's last upload as another test clip
+        shutil.copy(live_upload, CLIP.parent / keep); volume.commit()
     if not CLIP.exists() and live_upload.exists():
         CLIP.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(live_upload, CLIP)
@@ -81,13 +84,14 @@ def hf_search(queries: list) -> dict:
 
 
 @app.local_entrypoint()
-def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = ""):
+def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = "",
+         clip: str = "clip.mp4", keep: str = ""):
     if hf:
         dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
         (dest / "hf_search.json").write_text(json.dumps(hf_search.remote(hf.split("|")), indent=1))
         return
-    state = rerun.remote(rerun_mode, res) if rerun_mode else None
-    files = snapshot.remote("eval" if rerun_mode else "live", [float(t) for t in times.split(",") if t.strip()], export)
+    state = rerun.remote(rerun_mode, res, clip) if rerun_mode else None
+    files = snapshot.remote("eval" if rerun_mode else "live", [float(t) for t in times.split(",") if t.strip()], export, keep)
     dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
     for name, data in files.items(): (dest / name).write_bytes(data)
     if state is not None: (dest / "job_state.json").write_text(json.dumps(state, indent=1))
