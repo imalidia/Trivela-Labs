@@ -162,3 +162,14 @@ def test_team_picker_clicks_reach_the_analysis(client):
         assert [k["role"] for k in w.started[5]] == ["home", "away"]          # off-frame and unknown roles dropped
     finally:
         app.WORKER = None; app.JOB_STATE.update(status="idle")
+
+
+def test_a_saved_analysis_keeps_its_own_video(client):
+    import app, uuid
+    mid = str(uuid.uuid4())
+    (app.PROCESSED_DIR / "tactical_output.mp4").write_bytes(b"0123456789" * 100)
+    assert client.put(f"/api/analyses/{mid}", json=ROW).status_code == 200
+    (app.PROCESSED_DIR / "tactical_output.mp4").write_bytes(b"another video")      # the next analysis
+    r = client.get(f"/api/video/{mid}", headers={"Range": "bytes=10-19"})
+    assert r.status_code == 206 and r.content == b"0123456789" and "immutable" in r.headers["cache-control"]
+    assert client.get(f"/api/video/{uuid.uuid4()}").status_code == 404

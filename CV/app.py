@@ -1809,7 +1809,8 @@ class Encoder:
             vargs, self.name = pick_encoder()
             cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{w}x{h}",
                    "-r", f"{fps:.4f}", "-i", "-", "-i", audio_src, "-map", "0:v:0", "-map", "1:a:0?"] + vargs + \
-                  ["-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", path]
+                  ["-g", str(max(1, int(round(fps)))), "-maxrate", "5M", "-bufsize", "10M",   # keyframe each second: quick seeking
+                   "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", path]
             self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
             self.q = queue.Queue(32)
             self.t = threading.Thread(target=self._pump, daemon=True); self.t.start()
@@ -2587,7 +2588,7 @@ def job_state():
 # ----------------------------------------------------------------------------
 # API
 # ----------------------------------------------------------------------------
-def range_streamer(path: Path, start: int, end: int, chunk: int = 512 * 1024):
+def range_streamer(path: Path, start: int, end: int, chunk: int = 2 * 1024 * 1024):
     with open(path, "rb") as f:
         f.seek(start); remaining = end - start + 1
         while remaining > 0:
@@ -2597,7 +2598,9 @@ def range_streamer(path: Path, start: int, end: int, chunk: int = 512 * 1024):
 
 @app.get("/api/video-stream/{file_name}")
 def stream_video(file_name: str, request: Request):
-    path = PROCESSED_DIR / Path(file_name.split("?")[0]).name
+    return serve_mp4(PROCESSED_DIR / Path(file_name.split("?")[0]).name, request, {"Cache-Control": "no-cache"})
+
+def serve_mp4(path: Path, request: Request, extra: dict):
     if not path.exists(): raise HTTPException(status_code=404, detail="Video not found")
     size = path.stat().st_size
     rng = request.headers.get("range")
@@ -2612,9 +2615,9 @@ def stream_video(file_name: str, request: Request):
             return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
         return StreamingResponse(range_streamer(path, start, end), status_code=206, headers={
             "Content-Range": f"bytes {start}-{end}/{size}", "Accept-Ranges": "bytes",
-            "Content-Length": str(end - start + 1), "Content-Type": "video/mp4"})
+            "Content-Length": str(end - start + 1), "Content-Type": "video/mp4", **extra})
     return StreamingResponse(range_streamer(path, 0, size - 1), headers={
-        "Accept-Ranges": "bytes", "Content-Length": str(size), "Content-Type": "video/mp4"})
+        "Accept-Ranges": "bytes", "Content-Length": str(size), "Content-Type": "video/mp4", **extra})
 
 @app.get("/api/tracking-data/{file_name}")
 def get_tracking_data(file_name: str):
@@ -2791,6 +2794,25 @@ def list_analyses():
 def get_analysis(match_id: str):
     return read_analysis(match_id)
 
+VIDEOS_DIR = BASE_DIR / "videos"     # each saved analysis keeps its own annotated video (the newest MAX_VIDEOS)
+VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+MAX_VIDEOS = 30
+
+def keep_video(match_id: str):
+    """On an analysis' first save: a copy of the video the engine just made, so the report can play it later"""
+    src = PROCESSED_DIR / "tactical_output.mp4"
+    if not src.is_file() or time.time() - src.stat().st_mtime > 6 * 3600: return     # not this analysis' video
+    dst = VIDEOS_DIR / f"{match_id}.mp4"
+    tmp = dst.with_suffix(".tmp"); shutil.copyfile(src, tmp); tmp.replace(dst)
+    for old in sorted(VIDEOS_DIR.glob("*.mp4"), key=lambda f: f.stat().st_mtime)[:-MAX_VIDEOS]:
+        old.unlink(missing_ok=True)
+
+@app.get("/api/video/{match_id}")
+def analysis_video(match_id: str, request: Request):
+    """The annotated video of a saved analysis, with range requests; it never changes, so browsers may cache it"""
+    if not UUID_RE.match(match_id or ""): raise HTTPException(status_code=400, detail="Not a saved analysis id.")
+    return serve_mp4(VIDEOS_DIR / f"{match_id}.mp4", request, {"Cache-Control": "public, max-age=604800, immutable"})
+
 @app.put("/api/analyses/{match_id}")
 async def save_analysis(match_id: str, request: Request):
     path = analysis_path(match_id)
@@ -2798,10 +2820,12 @@ async def save_analysis(match_id: str, request: Request):
     if len(raw) > MAX_ANALYSIS_BYTES: raise HTTPException(status_code=413, detail="That analysis is too big to save.")
     try: row = clean_analysis(match_id, json.loads(raw))
     except ValueError: raise HTTPException(status_code=400, detail="The analysis is not valid JSON.")
+    first = not path.exists()
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(row), encoding="utf-8"); tmp.replace(path)
     for old in sorted(ANALYSES_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime)[:-MAX_ANALYSES]:
         old.unlink(missing_ok=True)
+    if first: await asyncio.to_thread(keep_video, match_id)
     if WORKER: await asyncio.to_thread(WORKER.commit)
     return {"status": "saved", "id": match_id}
 

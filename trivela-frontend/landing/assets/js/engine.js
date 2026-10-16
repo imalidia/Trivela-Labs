@@ -260,6 +260,7 @@
   const summary = base => call(base, '/api/summary');
   const cancel = base => call(base, '/api/cancel', { method: 'POST' });
   const videoUrl = base => `${base}/api/video-stream/tactical_output.mp4`;
+  const analysisVideoUrl = (base, id) => `${base}/api/video/${encodeURIComponent(id)}`;   // each saved analysis' own video
 
   /* Chunked upload with per-chunk retries. onProgress(0..1). signal: AbortSignal to stop.
      Chunk 0 goes first (the engine starts a fresh file on it), then UPLOAD_PARALLEL chunks travel at once: each one
@@ -310,7 +311,7 @@
   /* The engine set at deploy time (config.js; the engine's own copy of the site points at itself), else the one saved in this browser */
   const configuredBase = () => normalizeBase((root.TRIVELA_CONFIG || {}).engineUrl) || getBase();
 
-  const api = { STAT_DEFS, normalizeBase, phaseStep, toReport, getBase, setBase, configuredBase, info, status, summary, cancel, videoUrl, upload, start, uploadFrame,
+  const api = { STAT_DEFS, normalizeBase, phaseStep, toReport, getBase, setBase, configuredBase, info, status, summary, cancel, videoUrl, analysisVideoUrl, upload, start, uploadFrame,
     analyses, analysis, saveAnalysis };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TrivelaEngine = api;

@@ -168,7 +168,7 @@ class ModalWorker:
 # Web server: app.py's API and pages, plus the AI coach on 127.0.0.1:5600 (no public port, as in docker-compose)
 # One container, so uploads and progress live in one place; it sleeps after 5 idle minutes.
 # ----------------------------------------------------------------------------
-@app.cls(cpu=1.0, memory=2048, timeout=60 * 60, volumes={DATA: volume}, max_containers=1, scaledown_window=300,
+@app.cls(cpu=2.0, memory=2048, timeout=60 * 60, volumes={DATA: volume}, max_containers=1, scaledown_window=300,
          secrets=[modal.Secret.from_name("trivela-coach")])
 @modal.concurrent(max_inputs=100)
 class Web:

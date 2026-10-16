@@ -548,13 +548,24 @@ function vTeamReal(rep) {
     ${v === 'heat' ? `<div class="toolbar" style="margin-top:-10px">${tabs([['all', 'Whole match'], ['on', 'On the ball'], ['off', 'Off the ball']], mode, 'heatmode')}</div>` : ''}
     <div class="pitch-big">${pitch(inner, v)}<div class="pitch-legend">${legends[v]}${empty}<span>${esc(mapNote(maps))}</span></div></div>`;
 }
-/* The annotated video lives on the model server, which keeps only its latest analysis */
+/* The annotated video lives on the model server: each saved analysis keeps its own copy (the newest 30).
+   Analyses saved before that only have the server's latest video, for the match that made it */
+const NO_VIDEO = '<h3 style="margin-bottom:6px">Video not available</h3><p class="muted" style="margin:0">The model server no longer has the annotated video for this analysis. Analyze the match again to watch it.</p>';
 function vVideoReal(rep, m) {
   const e = rep.engine || {}, last = latestVideo();
-  const playable = e.base && last && last.matchId === m.id && last.base === e.base;
-  if (!playable) return `<div class="card"><h3 style="margin-bottom:6px">Video not available</h3><p class="muted" style="margin:0">The annotated video is stored on the model server that made it, and only for its latest analysis. Analyze the match again with the server running to watch it.</p></div>`;
-  return `<div class="card"><video class="engine-video" id="engineVideo" controls playsinline preload="metadata" src="${esc(E.videoUrl(e.base))}"></video>
-    <p class="muted" style="margin:12px 0 0">Annotated by the model: rings show each player's team, the gold ring and arrow mark the ball carrier, and the bar at the bottom is live possession. It plays while the model server still has this video.</p></div>`;
+  if (!e.base) return `<div class="card">${NO_VIDEO}</div>`;
+  const fallback = last && last.matchId === m.id && last.base === e.base ? E.videoUrl(e.base) : '';
+  return `<div class="card" id="videoCard"><video class="engine-video" id="engineVideo" controls playsinline preload="auto" src="${esc(E.analysisVideoUrl(e.base, m.id))}" data-fallback="${esc(fallback)}"></video>
+    <p class="muted" style="margin:12px 0 0">Annotated by the model: rings show each player's team, the gold ring and arrow mark the ball carrier, and the bar at the bottom is live possession.</p></div>`;
+}
+/* An analysis without its own copy: try the server's latest video, else say it's gone */
+function bindVideo() {
+  const v = $('#engineVideo'); if (!v) return;
+  v.onerror = () => {
+    const fb = v.dataset.fallback;
+    if (fb && v.getAttribute('src') !== fb) { v.dataset.fallback = ''; v.src = fb; return; }
+    const c = $('#videoCard'); if (c) c.innerHTML = NO_VIDEO;
+  };
 }
 
 function vTeam() {
@@ -971,7 +982,7 @@ function bind() {
   }
   const cj = $('#cancelJob');
   if (cj) cj.onclick = () => { cj.disabled = true; E.cancel(S.engine.base).catch(err => { console.error(err); cj.disabled = false; toast(`Couldn't cancel: ${esc(err.message)}`); }); };
-  const ev = $('#engineVideo'); if (ev) ev.onerror = () => toast('The video is no longer on the model server. It keeps only the latest one.');
+  bindVideo();
   placePills();
   syncCoach();
   if (S.route === 'match' && S.tab === 'video') setupVideo();
