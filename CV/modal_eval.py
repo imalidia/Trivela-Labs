@@ -33,7 +33,7 @@ def rerun(mode: str, res: str, clip: str = "clip.mp4") -> dict:
 
 
 @app.function(cpu=4.0, memory=8192, timeout=30 * 60, volumes={DATA: volume})
-def snapshot(source: str, times: list, export: bool = False, keep: str = "") -> dict:
+def snapshot(source: str, times: list, export: bool = False, keep: str = "", export_clip: str = "") -> dict:
     volume.reload()
     live_upload = WORKSPACES["live"] / "uploads" / "source_match.mp4"
     if keep and live_upload.exists():               # keep the site's last upload as another test clip
@@ -57,7 +57,11 @@ def snapshot(source: str, times: list, export: bool = False, keep: str = "") -> 
                             "-vf", "scale=1280:-2", "-q:v", "3", str(tmp / f"frame_{t:07.2f}.jpg")], check=False)
         for f in sorted(tmp.glob("*.jpg")): out[f.name] = f.read_bytes()
     if export:                                   # the raw clip and the detector weights, for local CPU test runs
-        if CLIP.exists(): out["clip.mp4"] = CLIP.read_bytes()
+        src = CLIP.parent / (export_clip or CLIP.name)
+        if src.exists():                         # re-encoded so it stays under GitHub's 100 MB file limit
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-c:v", "libx264", "-preset", "veryfast",
+                            "-crf", "24", "-an", "/tmp/export.mp4"], check=True)
+            out["clip.mp4"] = Path("/tmp/export.mp4").read_bytes()
         out["yolo-football-player-detection.pt"] = Path("/app/yolo-football-player-detection.pt").read_bytes()
     out["clip.txt"] = (f"clip: {CLIP} ({CLIP.stat().st_size} bytes)" if CLIP.exists() else "no test clip yet").encode()
     return out
@@ -91,7 +95,7 @@ def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "
         (dest / "hf_search.json").write_text(json.dumps(hf_search.remote(hf.split("|")), indent=1))
         return
     state = rerun.remote(rerun_mode, res, clip) if rerun_mode else None
-    files = snapshot.remote("eval" if rerun_mode else "live", [float(t) for t in times.split(",") if t.strip()], export, keep)
+    files = snapshot.remote("eval" if rerun_mode else "live", [float(t) for t in times.split(",") if t.strip()], export, keep, clip if export else "")
     dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
     for name, data in files.items(): (dest / name).write_bytes(data)
     if state is not None: (dest / "job_state.json").write_text(json.dumps(state, indent=1))
