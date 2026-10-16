@@ -293,3 +293,28 @@ def test_end_to_end_runs_on_the_log(tmp_path):
     assert out["pitch"]["anchored_pct"] >= 50
     assert sum(out["maps"]["heat"]["a_off"]) > 0 and 0 in out["players"]
     json.dumps(out)
+
+
+
+def test_keypoint_homography_maps_the_picture_to_pitch_metres():
+    import numpy as np
+    cv2 = pytest.importorskip("cv2")
+    if not hasattr(cv2, "findHomography"): pytest.skip("needs the real OpenCV")
+    src = open(SRC, encoding="utf-8").read()
+    a = src.index("# PITCH FROM ITS MARKINGS"); b = src.index("class KeypointReader")
+    app = type("K", (), {})
+    ns = {"np": np, "cv2": cv2, "os": os, "PITCH_L": 105.0, "PITCH_W": 68.0, "BOX_D": 16.5}
+    exec(src[src.rfind("\n", 0, a) + 1:b], ns)
+    app.KP_PITCH, app.kp_homography, app.PITCH_L = ns["KP_PITCH"], ns["kp_homography"], 105.0
+    # a made-up camera: pitch metres -> pixels, then the keypoints it would show (half the pitch in view)
+    Hp = np.array([[9.0, 2.0, 100.0], [0.3, 6.0, 250.0], [0.0004, 0.004, 1.0]])
+    q = np.c_[app.KP_PITCH, np.ones(len(app.KP_PITCH))] @ Hp.T; pix = q[:, :2] / q[:, 2:]
+    conf = np.where(app.KP_PITCH[:, 0] >= app.PITCH_L / 2, 0.9, 0.1)          # only the right half is seen
+    Hm = app.kp_homography(pix, conf)
+    assert Hm is not None
+    q = np.c_[pix, np.ones(len(pix))] @ Hm.T; back = q[:, :2] / q[:, 2:]
+    seen = conf > 0.5
+    assert np.abs(back[seen] - app.KP_PITCH[seen]).max() < 0.05
+    # the halfway line alone (all on one line) is not enough
+    line = np.isin(np.arange(len(conf)), [11, 12, 13, 14, 15])
+    assert app.kp_homography(pix, np.where(line, 0.9, 0.1)) is None

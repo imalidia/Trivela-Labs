@@ -147,3 +147,4 @@ def test_score_reader_turns_score_changes_into_goals(client):
                 (750, 1, 0), (800, 1, 0), (850, 1, 1), (900, 1, 1)]
     assert sr.goals() == [(200, 0), (650, 1)]
     assert app._score_of("05:04 ROM 0-0 INT") == (0, 0) and app._score_of("32:07") is None
+

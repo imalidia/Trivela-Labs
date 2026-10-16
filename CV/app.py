@@ -910,6 +910,7 @@ class PitchMapper:
         self.W, self.H = W, H
         self.frame = {}; self.off = {}; self.flip = False
         self.anchored_pct = 0.0; self.dir_votes = 0
+        self.kpH = {}; self.hold = 30; self.kp_of = {}; self.cam = {}; self.kp_pct = 0.0
 
     def scale(self, fit, y):
         return PLAYER_H_M / max(6.0, fit[0] + fit[1] * y)
@@ -928,7 +929,21 @@ class PitchMapper:
         dist = lambda v: CAM_DIST_M * max(6.0, a + b * self.H / 2.0) / max(6.0, a + b * v)
         return min(PITCH_W, max(0.0, dist(gtop) - dist(y)))
 
+    def _kp_point(self, f, u, y):
+        g = self.kp_of.get(f)
+        if g is None: return None
+        u = u - self.cam[f] + self.cam[g]                # into that frame's picture: undo the camera pan in between
+        q = self.kpH[g] @ np.array([u, y, 1.0])
+        if abs(q[2]) < 1e-9: return None
+        x, yy = q[0] / q[2], q[1] / q[2]
+        if not (-5.0 <= x <= PITCH_L + 5.0 and -5.0 <= yy <= PITCH_W + 5.0): return None
+        return min(PITCH_L, max(0.0, x)), min(PITCH_W, max(0.0, yy))
+
     def to_pitch(self, f, u, y):
+        k = self._kp_point(f, u, y)
+        if k is not None:
+            x, yy = k
+            return (PITCH_L - x, PITCH_W - yy) if self.flip else (x, yy)
         seg, C, fit, gtop = self.frame[f]
         x = min(PITCH_L, max(0.0, self.off.get(seg, PITCH_L / 2) + self.rel_x(C, fit, u, y)))
         yy = self.depth_y(fit, gtop, y)
@@ -948,14 +963,27 @@ class PitchMapper:
             C = 0.0
             if same:
                 C = prev[2] - (camx - prev[1]) * self.scale(fit, self.H * REF_ROW)
-            self.frame[f] = (seg, C, fit, r.get("g", 0))
+            self.frame[f] = (seg, C, fit, r.get("g", 0)); self.cam[f] = camx
             sd = segs.get(seg)
             if sd is None:
                 sd = segs[seg] = {"f0": f, "n": 0, "xs": [], "gk": [], "tx": [[0.0, 0], [0.0, 0]], "votes": 0}
             sd["f1"] = f; sd["C1"] = C; sd["n"] += 1
             self._observe(sd, ps, C, fit, f)
             prev = (seg, camx, C, fit)
+        self._link_keypoints()
         self._solve(segs)
+
+    def _link_keypoints(self):
+        """Each frame -> the nearest frame of the same camera shot with a homography, within KP_HOLD_S"""
+        if not self.kpH: return
+        ks = sorted(g for g in self.kpH if g in self.frame); import bisect
+        for f in self.frame:
+            i = bisect.bisect_left(ks, f); best = None
+            for g in ks[max(0, i - 1): i + 1]:
+                if abs(g - f) <= self.hold and self.frame[g][0] == self.frame[f][0] and (best is None or abs(g - f) < abs(best - f)):
+                    best = g
+            if best is not None: self.kp_of[f] = best
+        self.kp_pct = round(100.0 * len(self.kp_of) / max(1, len(self.frame)), 1)
 
     def _observe(self, sd, ps, C, fit, f):
         side = {0: [], 1: []}; gks = []
@@ -1369,14 +1397,14 @@ class MatchAnalytics:
                 "player_heat_size": [PHEAT_NX, PHEAT_NY], "passes": self.passes, "shots": self.shots}
         return {"team": team, "players": players, "maps": maps}
 
-def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=(), pm_out=None, goals=()):
+def match_analytics(path, G, fps, W, H, events, gains, team_of, keep, strikes=(), pm_out=None, goals=(), kpH=None):
     """Two passes over the per-frame log: map pixels to the pitch, then count. keep = player ids to report."""
-    pm = PitchMapper(W, H); pm.build(path)
+    pm = PitchMapper(W, H); pm.kpH = kpH or {}; pm.hold = int(1.0 * fps); pm.build(path)   # a homography covers frames 1 s away
     ma = MatchAnalytics(pm, fps, G, events, gains, team_of, strikes, goals)
     for f, r in _frames(path): ma.frame(f, r)
     ma.finish()
     out = ma.result(keep)
-    out["pitch"] = {"estimated": True, "anchored_pct": pm.anchored_pct, "flipped": pm.flip}
+    out["pitch"] = {"estimated": True, "anchored_pct": pm.anchored_pct, "flipped": pm.flip, "markings_pct": pm.kp_pct}
     if pm_out is not None: pm_out.append(pm)     # the pitch estimate, for the tactical radar drawn into the video
     return out
 
@@ -1565,6 +1593,76 @@ class ScoreReader:
                 continue                               # an impossible jump: a misread, keep the current score
             cur = (na, nb)
         return out
+
+# ----------------------------------------------------------------------------
+# PITCH FROM ITS MARKINGS: a keypoint model (YOLO11 pose, cdqqqqqq/Soccana_Keypoint on Hugging Face) finds up to 29
+# landmarks of the pitch (corners, box corners, centre circle...) every few frames; the ones it is sure of give the
+# homography from the picture to pitch metres. Optional: without the weights the pitch is estimated as before.
+# ----------------------------------------------------------------------------
+KP_MODEL_PATH = os.environ.get("TRIVELA_KP_MODEL", "pitch-keypoints.pt")
+KP_EVERY_S = 0.2         # one keypoint reading every 0.2 s
+KP_CONF = 0.5
+KP_MIN_POINTS = 4
+_BX, _GX = (PITCH_W - 40.32) / 2, (PITCH_W - 18.32) / 2
+_DX = 11.0 + 9.15        # the D of the penalty area: the penalty spot plus the circle's radius
+# metres (x along the touchline, y from the far touchline), in the model's keypoint order
+KP_PITCH = np.array([
+    (0, 0), (0, _BX), (BOX_D, _BX), (0, PITCH_W - _BX), (BOX_D, PITCH_W - _BX),
+    (0, _GX), (5.5, _GX), (0, PITCH_W - _GX), (5.5, PITCH_W - _GX), (0, PITCH_W),
+    (_DX, PITCH_W / 2), (PITCH_L / 2, 0), (PITCH_L / 2, PITCH_W), (PITCH_L / 2, PITCH_W / 2 - 9.15),
+    (PITCH_L / 2, PITCH_W / 2 + 9.15), (PITCH_L / 2, PITCH_W / 2), (PITCH_L, 0),
+    (PITCH_L, _BX), (PITCH_L - BOX_D, _BX), (PITCH_L, PITCH_W - _BX), (PITCH_L - BOX_D, PITCH_W - _BX),
+    (PITCH_L, _GX), (PITCH_L - 5.5, _GX), (PITCH_L, PITCH_W - _GX), (PITCH_L - 5.5, PITCH_W - _GX), (PITCH_L, PITCH_W),
+    (PITCH_L - _DX, PITCH_W / 2), (PITCH_L / 2 - 9.15, PITCH_W / 2), (PITCH_L / 2 + 9.15, PITCH_W / 2)], np.float32)
+
+def kp_homography(xy, conf):
+    """Picture -> pitch metres from one frame's keypoints, or None when too few or too clustered to trust"""
+    ok = (conf >= KP_CONF) & (xy[:, 0] > 0) & (xy[:, 1] > 0)
+    if ok.sum() < KP_MIN_POINTS: return None
+    src, dst = xy[ok].astype(np.float32), KP_PITCH[ok]
+    if cv2.contourArea(cv2.convexHull(dst)) < 60.0: return None      # on one line (the halfway line alone) or a tiny patch
+    Hm, inl = cv2.findHomography(src, dst, cv2.RANSAC, 2.0)          # 2 m reprojection tolerance
+    if Hm is None or inl is None or inl.sum() < KP_MIN_POINTS: return None
+    if cv2.contourArea(cv2.convexHull(dst[inl.ravel() > 0])) < 60.0: return None
+    return Hm
+
+class KeypointReader:
+    """Pitch keypoints on sampled frames in a worker thread, on the GPU next to the detector"""
+    def __init__(self, fps):
+        self.every = max(1, int(round(KP_EVERY_S * fps))); self.H = {}; self.ok = False
+        self.q = queue.Queue(8); self.stop = False; self.tried = 0
+        if not os.path.isfile(KP_MODEL_PATH): return
+        try:
+            self.model = YOLO(KP_MODEL_PATH); self.ok = True
+        except Exception as e:
+            print("pitch keypoint model not loaded:", e); return
+        self.t = threading.Thread(target=self._run, daemon=True); self.t.start()
+
+    def offer(self, idx, frame):
+        if not self.ok or idx % self.every: return
+        sc = min(1.0, 1280.0 / frame.shape[1])
+        img = cv2.resize(frame, None, fx=sc, fy=sc, interpolation=cv2.INTER_AREA) if sc < 1.0 else frame.copy()
+        try: self.q.put_nowait((idx, img, sc))
+        except queue.Full: pass
+
+    def _run(self):
+        while not self.stop or not self.q.empty():
+            try: idx, img, sc = self.q.get(timeout=0.5)
+            except queue.Empty: continue
+            try:
+                r = self.model.predict(img, imgsz=640, conf=0.25, half=HAS_GPU, device=DEVICE_TARGET, verbose=False)[0]
+                self.tried += 1
+                k = r.keypoints
+                if k is None or k.conf is None or len(k.xy) == 0: continue
+                j = int(np.argmax(r.boxes.conf.cpu().numpy())) if r.boxes is not None and len(r.boxes) else 0
+                Hm = kp_homography(k.xy[j].cpu().numpy() / sc, k.conf[j].cpu().numpy())
+                if Hm is not None: self.H[idx] = Hm
+            except Exception as e:
+                print("pitch keypoints failed:", e)
+
+    def close(self, timeout=60.0):
+        if not self.ok: return
+        self.stop = True; self.t.join(timeout=timeout)
 
 _ENC = {}
 def pick_encoder():
@@ -1874,7 +1972,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         kit = team.kit_bgr(); tm["pre"] = time.time() - t_pre0; tm["gpu"] = 0.0; tm["batches"] = 0
 
         tracker, tracker_name = make_tracker(fps)
-        score = ScoreReader(fps)
+        score = ScoreReader(fps); kpr = KeypointReader(fps)
         ident = IdentityManager(fps); cam = CameraMotion(); ground = GroundModel(H)
         ball = BallTracker(); poss = PossessionEngine(fps); cuts = CutDetector()
 
@@ -1911,7 +2009,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
             if item is None: break
             if "error" in item: raise item["error"]
             frame = item["frame"]; idx = item["idx"]
-            score.offer(idx, frame)
+            score.offer(idx, frame); kpr.offer(idx, frame)
 
             if idx % 10 == 0:
                 el = time.time() - start; pf = (idx + 1) / (el + 1e-5)
@@ -2107,7 +2205,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         J.update(status="finalizing", phase="Encoding final video & writing analytics", progress=99.9)
         poss.drop(idx)
         enc_name = enc.name; enc_blk = enc.blocked; enc.close(); enc = None
-        score.close(); goals = [] if cancelled else score.goals()
+        score.close(); goals = [] if cancelled else score.goals(); kpr.close()
         cap.release(); cap = None
 
         if cancelled:
@@ -2183,7 +2281,7 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
         try:
             ma = match_analytics(tmp_path, G, fps, W, H, poss.evlog, poss.events,
                                  {c: TEAM_CODE[l_] for c, l_ in team_info.items()}, real,
-                                 [[e_[0], e_[3]] for e_ in xev if e_[1] == "strike"], pm_box, goals)
+                                 [[e_[0], e_[3]] for e_ in xev if e_[1] == "strike"], pm_box, goals, kpr.H)
             for c, row in ma["players"].items(): pl[str(c)].update(row)
         except Exception:
             import traceback; traceback.print_exc()

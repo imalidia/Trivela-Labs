@@ -35,6 +35,10 @@ image = (
     .run_commands("mkdir -p /app && cd /app && python -c \"from huggingface_hub import hf_hub_download; "
                   "hf_hub_download(repo_id='martinjolif/yolo-football-player-detection', "
                   "filename='yolo-football-player-detection.pt', local_dir='.')\"")
+    # pitch keypoints (29 landmarks of the markings), for the homography to pitch metres
+    .run_commands("cd /app && python -c \"from huggingface_hub import hf_hub_download; import shutil; "
+                  "shutil.copy(hf_hub_download(repo_id='cdqqqqqq/Soccana_Keypoint', filename='Model/weights/best.pt'), "
+                  "'pitch-keypoints.pt')\"")
     .env({"PYTHONUNBUFFERED": "1", "YOLO_CONFIG_DIR": "/tmp/Ultralytics", "NVIDIA_DRIVER_CAPABILITIES": "all",
           "TRIVELA_WORKSPACE": f"{DATA}/workspace", "TRIVELA_COACH_URL": "http://127.0.0.1:5600",
           "TRIVELA_ALLOWED_ORIGINS": SITE_ORIGINS})
