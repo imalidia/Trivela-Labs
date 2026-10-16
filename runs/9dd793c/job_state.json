@@ -4,10 +4,10 @@
  "filename": "",
  "total_frames": 9547,
  "current_frame": 9540,
- "fps": 60.7,
+ "fps": 60.2,
  "progress": 100.0,
  "eta": 0,
- "video_url": "/api/video-stream/tactical_output.mp4?t=1792175660",
- "meta_url": "/api/tracking-data/tactical_metadata.json.gz?t=1792175660",
+ "video_url": "/api/video-stream/tactical_output.mp4?t=1792177055",
+ "meta_url": "/api/tracking-data/tactical_metadata.json.gz?t=1792177055",
  "error_msg": ""
 }

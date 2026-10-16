@@ -1,47 +1,4 @@
-✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-P7lCbIzKJ9iGQWa43aAB5W
-Building image im-hlxtNPcKRir3Vpa8dhGdAe
-
-=> Step 0: FROM base
-
-=> Step 1: RUN cd /app && python -c "from huggingface_hub import hf_hub_download; import shutil; shutil.copy(hf_hub_download(repo_id='cdqqqqqq/Soccana_Keypoint', filename='Model/weights/best.pt'), 'pitch-keypoints.pt')"
-Saving image...
-Image saved, took 6.66s
-
-Built image im-hlxtNPcKRir3Vpa8dhGdAe in 9.83s
-
-
-Building image im-lenGEj4ugEKMPORl94RStk
-
-=> Step 0: FROM base
-
-=> Step 1: ENV PYTHONUNBUFFERED=1
-
-=> Step 2: ENV YOLO_CONFIG_DIR=/tmp/Ultralytics
-
-=> Step 3: ENV NVIDIA_DRIVER_CAPABILITIES=all
-
-=> Step 4: ENV TRIVELA_WORKSPACE=/data/workspace
-
-=> Step 5: ENV TRIVELA_COACH_URL=http://127.0.0.1:5600
-
-=> Step 6: ENV TRIVELA_ALLOWED_ORIGINS=https://trivela-lab.vercel.app
-Saving image...
-Image saved, took 795.02ms
-
-Built image im-lenGEj4ugEKMPORl94RStk in 3.14s
-
-
-Building image im-6O6aFZ35jIy9Y4jd7pRZen
-
-=> Step 0: FROM base
-
-=> Step 1: WORKDIR /app
-Saving image...
-Image saved, took 1.61s
-
-Built image im-6O6aFZ35jIy9Y4jd7pRZen in 3.26s
-
-
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-UrSB0eymR49de9CawW5iLJ
 ✓ Created objects.
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
@@ -2433,8 +2390,7 @@ WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quan
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
 WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
-WARNING ⚠️ 'half' is deprecated and will be removed in the future. Use 'quantize' instead.
-[perf] total 170.7s | warm-up+prepass 6.0s | detector GPU busy 121.0s in 796 batches | main waited on detector 25.0s | encoder back-pressure 0.2s | 55.9 fps | bottleneck: CPU tracking / drawing
+[perf] total 168.5s | warm-up+prepass 6.0s | detector GPU busy 121.9s in 796 batches | main waited on detector 22.9s | encoder back-pressure 0.2s | 56.7 fps | bottleneck: CPU tracking / drawing
 wrote ['clip.txt', 'frame_0030.00.jpg', 'frame_0120.00.jpg', 'frame_0200.00.jpg', 'frame_0250.00.jpg', 'frame_0300.00.jpg', 'sheet_01.jpg', 'summary.json', 'tactical_metadata.json.gz'] to eval-out
 Stopping app - local entrypoint completed.
-✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-P7lCbIzKJ9iGQWa43aAB5W
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-UrSB0eymR49de9CawW5iLJ
