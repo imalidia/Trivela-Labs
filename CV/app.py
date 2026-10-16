@@ -239,7 +239,8 @@ class TeamModel:
         self.flipped = False                    # the last label_for() saw a settled track change team
         self.ref_samples = []; self.ref_c = None # the officials' shirt colour, learned from the detector's referee boxes
         self.nref = Counter()                   # shirt samples per track nearest the officials' colour
-        self.recent = defaultdict(lambda: deque(maxlen=8))   # the last shirt samples per track: "team" / "off" / "ref"
+        self.recent = defaultdict(lambda: deque(maxlen=8))   # the last shirt samples per track: team_a / team_b / "off" / "ref"
+        self.rrole = defaultdict(lambda: deque(maxlen=8))    # the detector's class for the same calls: player / gk / ref
         self.calls = Counter()                  # label_for calls per track (one per detection of it)
 
     @property
@@ -320,7 +321,8 @@ class TeamModel:
                     for k in c: c[k] *= KIT_DECAY
                     rf = self.refish(f)
                     c[near] += 1; self.nvotes[cid] += 1; self.noff[cid] += off; self.nref[cid] += rf
-                    self.recent[cid].append("ref" if rf else "off" if off else "team")
+                    self.recent[cid].append("ref" if rf else "off" if off else near)
+                    self.rrole[cid].append(role or "player")
                 else:
                     self.samples.append(f)
                     if len(self.samples) >= 150: self.fit()
@@ -328,13 +330,17 @@ class TeamModel:
         if len(rec) >= OFF_KIT_EARLY:
             # the latest shirt samples first: a track that slid from a player onto a keeper (or a referee) behind him
             # wears another shirt from then on, while its long history still says "player"
-            n_off = sum(1 for x in rec if x != "team"); n_ref = sum(1 for x in rec if x == "ref")
-            if len(rec) == rec.maxlen and n_off >= 0.875 * len(rec):
+            n_off = sum(1 for x in rec if x in ("off", "ref")); n_ref = sum(1 for x in rec if x == "ref")
+            # mid-track, a team player only becomes a keeper/official when the detector agrees about the new person too:
+            # a striped or shadowed shirt reads "off-kit" for a while without anybody having changed
+            det = self.rrole[cid]; det_ok = sum(1 for x in det if x != "player") >= 0.5 * max(1, len(det))
+            mid = self.settled.get(cid) in ("team_a", "team_b")
+            if len(rec) == rec.maxlen and n_off >= 0.875 * len(rec) and (det_ok or not mid):
                 role = "official" if (n_ref >= 0.5 * len(rec) or (r["ref"] > r["gk"] and r["ref"] >= 0.1 * n)) else "goalkeeper"
                 if self.settled.get(cid) in ("team_a", "team_b"): self.flipped = True
                 self.settled[cid] = role
                 return role
-            if n_off <= 0.25 * len(rec) and self.settled.get(cid) in ("goalkeeper", "official"):
+            if n_off <= 0.25 * len(rec) and self.settled.get(cid) in ("goalkeeper", "official") and not det_ok:
                 self.flipped = True; self.settled.pop(cid, None)          # slid from a keeper onto a player
                 nv = 0                                                     # judge the new player on his own shirt
         if nv >= OFF_KIT_MIN or (nv >= OFF_KIT_EARLY and self.noff[cid] >= OFF_KIT_EARLY_SHARE * nv):
@@ -354,16 +360,20 @@ class TeamModel:
         team = max(("team_a", "team_b"), key=lambda t: c[t])
         if c[team] >= KIT_SETTLED:
             prev = self.settled.get(cid); self.settled[cid] = team
-            self.flipped = self.flipped or (prev in ("team_a", "team_b") and prev != team)
+            if prev in ("team_a", "team_b") and prev != team:
+                if sum(1 for x in rec if x == team) >= 0.75 * rec.maxlen:
+                    self.flipped = True
+                else:
+                    team = prev; self.settled[cid] = prev          # not sure yet: he keeps his team (and his number)
         return team if c[team] else "team_a"
 
     def hand_over(self, old, new, team):
         # a split-off track starts with the shirt it has now, not the votes of the player it left
         self.votes[new] = Counter({team: self.votes[old][team]})
-        rec = self.recent[old]; self.recent[new] = deque(rec, maxlen=8)
+        rec = self.recent[old]; self.recent[new] = deque(rec, maxlen=8); self.rrole[new] = deque(self.rrole[old], maxlen=8)
         if team in ("goalkeeper", "official") or self.settled.get(old) is None:
             # a role split, or back to a player: count only the recent shirts, not the other person's history
-            self.nvotes[new] = len(rec); self.noff[new] = sum(1 for x in rec if x != "team")
+            self.nvotes[new] = len(rec); self.noff[new] = sum(1 for x in rec if x in ("off", "ref"))
             self.nref[new] = sum(1 for x in rec if x == "ref")
         else:
             self.nvotes[new] = self.nvotes[old]; self.noff[new] = self.noff[old]; self.nref[new] = self.nref[old]
@@ -523,7 +533,7 @@ class IdentityManager:
     # Lost tracks are re-linked with Hungarian matching on WORLD-space motion + appearance + team (never across teams),
     # and IDs that may have been swapped after an occlusion are verified against an appearance gallery.
     def __init__(self, fps):
-        self.fps = fps; self.max_age = int(fps * 3.0)
+        self.fps = fps; self.max_age = int(fps * 6.0)   # a player hidden behind others for up to 6 s keeps his id
         self.alias = {}; self.info = {}; self.raw_of = {}; self.overlap = {}; self.last_ov = {}
         self.base = 0; self.next_id = 1
     def new_shot(self):
@@ -1649,7 +1659,7 @@ def draw_possession_bar(frame, poss, kit):
     tw = cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, fs, 1)[0][0]
     cv2.putText(frame, t, (x0 + bw - tw, y0 - 6), cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 255, 255), 1, cv2.LINE_AA)
 
-NUMBERS_PER_TEAM = 19   # each team is numbered 1..19 by screen time; shorter fragments beyond that keep their ring only
+NUMBERS_PER_TEAM = 11   # each team is numbered 1..11 by screen time (a team has 11); shorter fragments keep their ring only
 
 def player_numbers(real, team_info, appear):
     """Numbers for the report and the video: each team 1, 2, 3... by screen time (its colour tells the teams apart),
@@ -2198,7 +2208,9 @@ def process_football_match(input_path: str, mode_key: str, res_key: str, burn: b
                 "track_len": {str(c): int(appear[c]) for c in real},
                 "first_seen": {str(c): int(first_seen[c]) for c in real if c in first_seen},
                 "poss_events": poss.events, "events": events, "links": links, "shots": shots, "stats": stats,
-                "maps": ma["maps"] if ma else None, "pitch": ma["pitch"] if ma else None}
+                "maps": ma["maps"] if ma else None, "pitch": ma["pitch"] if ma else None,
+                "score": {"ocr": score.ok, "reads": len(score.reads), "sample": score.reads[:: max(1, len(score.reads) // 40)],
+                          "goals": goals}}
         el_ = max(1e-3, time.time() - t_job)
         rest["perf"] = {"seconds": round(el_, 1), "fps": round((idx + 1) / el_, 1), "realtime": round(((idx + 1) / fps) / el_, 2),
                         "encoder": enc_name, "stride": mode["stride"], "batch": bsz, "imgsz": mode["imgsz"],
