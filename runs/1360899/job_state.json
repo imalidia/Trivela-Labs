@@ -1,0 +1,13 @@
+{
+ "status": "completed",
+ "phase": "Done",
+ "filename": "",
+ "total_frames": 9295,
+ "current_frame": 9290,
+ "fps": 37.5,
+ "progress": 100.0,
+ "eta": 0,
+ "video_url": "/api/video-stream/tactical_output.mp4?t=1792275693",
+ "meta_url": "/api/tracking-data/tactical_metadata.json.gz?t=1792275693",
+ "error_msg": ""
+}
