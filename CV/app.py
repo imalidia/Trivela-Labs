@@ -2866,6 +2866,15 @@ def _forward_to_coach(payload: bytes, visitor: str):
         print("AI coach unreachable:", e)
         return 503, json.dumps({"success": False, "data": None, "error": "The AI coach is offline right now."}).encode()
 
+# The site's demo match (made by trivela-frontend/scripts/demo-match.mjs), so the coach also works on the demo page
+DEMO_MATCH_ID = "00000000-0000-4000-8000-000000000001"
+DEMO_MATCH_FILES = (Path(__file__).with_name("demo-match.json"), Path(__file__).parent.parent / "trivela-frontend/scripts/demo-match.json")
+
+def demo_match() -> dict:
+    for f in DEMO_MATCH_FILES:
+        if f.is_file(): return json.loads(f.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="The demo match is not on this server.")
+
 @app.post("/api/coach")
 async def coach(request: Request):
     if not COACH_URL: return coach_reply(503, "The AI coach is not set up on this server.")
@@ -2874,7 +2883,7 @@ async def coach(request: Request):
     try: body = json.loads(raw)
     except ValueError: return coach_reply(400, "The request is not valid JSON.")
     if not isinstance(body, dict): return coach_reply(400, "The request is not valid JSON.")
-    try: row = read_analysis(str(body.get("match_id") or ""))
+    try: row = demo_match() if body.get("match_id") == DEMO_MATCH_ID else read_analysis(str(body.get("match_id") or ""))
     except HTTPException as e: return coach_reply(e.status_code, e.detail)
     engine = row.get("engine") or {}
     match = {"home": row.get("home"), "away": row.get("away"), "stats": row.get("stats"), "players": row.get("players"),

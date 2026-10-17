@@ -32,6 +32,7 @@ def client(tmp_path_factory):
     threading.Thread(target=coach.serve_forever, daemon=True).start()
     work = tmp_path_factory.mktemp("engine")
     for f in ("app.py", "hud.html"): shutil.copy(os.path.join(HERE, "..", f), work)
+    shutil.copy(os.path.join(HERE, "..", "..", "trivela-frontend", "scripts", "demo-match.json"), work)
     cwd = os.getcwd(); os.chdir(work); sys.path.insert(0, str(work))
     os.environ["TRIVELA_COACH_URL"] = f"http://127.0.0.1:{coach.server_port}"
     import app
@@ -59,6 +60,12 @@ def test_coach_gets_the_stored_match_not_the_browsers(client):
     sent = FakeCoach.seen["body"]
     assert sent["match"]["home"] == "A <b>" and sent["match"]["engine"] == {"duration_s": 600, "ball": None, "kit_learned": None, "swaps_fixed": None}
     assert FakeCoach.seen["visitor"] == "testclient"
+
+def test_coach_reads_the_demo_match_on_the_server(client):
+    r = client.post("/api/coach", json={"match_id": "00000000-0000-4000-8000-000000000001", "feature": "report", "match": {"home": "forged"}})
+    assert r.status_code == 200
+    sent = FakeCoach.seen["body"]["match"]
+    assert sent["home"] == "Harbor City" and sent["stats"]["Goals"] == [2, 1] and len(sent["players"]) == 22
 
 def test_coach_errors(client):
     assert client.post("/api/coach", json={"match_id": "11111111-2222-4333-8444-000000000000", "feature": "report"}).status_code == 404

@@ -449,7 +449,7 @@ function vMatch() {
   return `<section class="hero compact slim"><div class="lib-wrap"><div class="match-head">
       <div class="score">${crest(m.home, teamColor('home'))}<span class="team">${esc(m.home)}</span>
         <span class="big num">${m.score ? `${m.score[0]} – ${m.score[1]}` : 'vs'}</span><span class="team">${esc(m.away)}</span>${crest(m.away, teamColor('away'))}</div>
-      <span style="display:flex;gap:8px;flex-wrap:wrap">${rep && S.engine.base ? `<button class="coach-cta" data-coach-open aria-haspopup="dialog" aria-keyshortcuts="/"><span class="coach-cta-ic">${ICON.coach}</span>Ask AI coach<kbd>/</kbd></button>` : ''}<button class="key soft sm" id="export">${ICON.share} Export</button></span></div>
+      <span style="display:flex;gap:8px;flex-wrap:wrap">${S.engine.base && (rep || m.id === 'm1') ? `<button class="coach-cta" data-coach-open aria-haspopup="dialog" aria-keyshortcuts="/"><span class="coach-cta-ic">${ICON.coach}</span>Ask AI coach<kbd>/</kbd></button>` : ''}<button class="key soft sm" id="export">${ICON.share} Export</button></span></div>
     <div class="toolbar">${tabs(tabList, S.tab, 'tab')}
       <span class="muted">${esc(m.date)} · ${length}</span></div></div></section>
   <section class="lib"><div class="lib-wrap">${body}</div></section>`;
@@ -948,13 +948,15 @@ function placePills() {
     pill.style.left = on.offsetLeft + 'px'; pill.style.width = on.offsetWidth + 'px';
   });
 }
-/* AI coach (coach.js): open on a model-made report saved on the connected engine; it reads the match from there */
-const C = window.TrivelaCoach;
+/* AI coach (coach.js): open on a model-made report saved on the connected engine; it reads the match from there.
+   The demo match has its own copy on the engine (scripts/demo-match.json) under DEMO_COACH_ID */
+const C = window.TrivelaCoach, DEMO_COACH_ID = '00000000-0000-4000-8000-000000000001';
 function syncCoach() {
   const m = match();
-  if (S.route !== 'match' || !S.real[S.matchId] || !S.engine.base) { C.detach(); return; }
+  const id = !m ? null : S.real[m.id] ? m.id : m.id === 'm1' ? DEMO_COACH_ID : null;
+  if (S.route !== 'match' || !id || !S.engine.base) { C.detach(); return; }
   C.init(S.engine.base);
-  C.attach([{ id: m.id, label: `${m.home} vs ${m.away}` }], m.id);
+  C.attach([{ id, label: `${m.home} vs ${m.away}` }], id);
 }
 function bind() {
   document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go));

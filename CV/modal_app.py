@@ -49,6 +49,7 @@ image = (
     # code last: changing it redeploys in seconds without rebuilding the layers above
     .add_local_file(HERE / "app.py", "/app/app.py")
     .add_local_file(HERE / "hud.html", "/app/hud.html")
+    .add_local_file(HERE.parent / "trivela-frontend/scripts/demo-match.json", "/app/demo-match.json")
     .add_local_dir(SITE_DIR, "/app/web")
     .add_local_dir(COACH_DIR, "/coach", ignore=[".env", ".env.*", "Dockerfile", "dev-site.mjs"])
 )
