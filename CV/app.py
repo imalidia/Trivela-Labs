@@ -114,6 +114,7 @@ class GrassModel:
     def __init__(self):
         self.lo = np.array([28, 30, 25], np.uint8)
         self.hi = np.array([92, 255, 255], np.uint8)
+        self.peak = None                                 # the turf's hue, once calibrated
 
     def calibrate(self, frame):
         small = cv2.resize(frame, (320, 180), interpolation=cv2.INTER_AREA)
@@ -127,6 +128,7 @@ class GrassModel:
         peak = int(np.argmax(hist))
         self.lo = np.array([max(15, peak - 16), 30, 25], np.uint8)
         self.hi = np.array([min(115, peak + 16), 255, 255], np.uint8)
+        self.peak = peak
 
     def mask(self, bgr):
         return cv2.inRange(cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV), self.lo, self.hi)
@@ -226,6 +228,10 @@ KIT_SETTLED = 3.0       # decayed vote weight that makes a team "settled" for a 
 REF_KIT_SHARE = 0.4     # share of a track's shirt samples nearest the officials' kit that makes it an official
 REF_SAMPLE_CONF = 0.5   # detector "referee" boxes at least this sure teach the engine the officials' kit...
 REF_MIN_SAMPLES = 12    # ...once there are this many (a few stray "referee" boxes are ball boys, stewards, keepers)
+NEON_SHARE = 0.3        # share of a torso in neon (grass-filtered, saturated, yellower than the turf) that makes a neon shirt...
+NEON_SAT = 100          # ...with neon pixels at least this saturated (HSV S)...
+NEON_HUE_OFF = 4        # ...and at least this many hue steps yellower than the turf
+NEON_MIN_PX = 30        # ...on a torso crop at least this big
 
 class TeamModel:
     def __init__(self, grass):
@@ -244,6 +250,7 @@ class TeamModel:
         self.recent = defaultdict(lambda: deque(maxlen=8))   # the last shirt samples per track: team_a / team_b / "off" / "ref"
         self.rrole = defaultdict(lambda: deque(maxlen=8))    # the detector's class for the same calls: player / gk / ref
         self.calls = Counter()                  # label_for calls per track (one per detection of it)
+        self.neon = False                       # the last feature() was a grass-coloured shirt
 
     @property
     def ready(self): return self.centroids is not None
@@ -277,8 +284,17 @@ class TeamModel:
         tx1 = max(0, int(x1 + 0.22 * w)); tx2 = min(frame.shape[1], int(x2 - 0.22 * w))
         if ty2 - ty1 < 3 or tx2 - tx1 < 3: return None
         torso = frame[ty1:ty2, tx1:tx2]
-        g = cv2.inRange(cv2.cvtColor(torso, cv2.COLOR_BGR2HSV), self.grass.lo, self.grass.hi)
+        hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
+        g = cv2.inRange(hsv, self.grass.lo, self.grass.hi)
         keep = torso[g == 0]
+        # a referee's neon yellow-green passes the grass filter, which erased his shirt: never sampled, he kept a team and
+        # a number. Its pixels are strongly saturated and a few hue steps yellower than the turf (Como-Inter: turf hue 42,
+        # S 145; the referee hue 37, S 150; white shirts tinted by the floodlights S 20-70)
+        self.neon = False
+        peak = getattr(self.grass, "peak", None)
+        if peak is not None and g.size >= NEON_MIN_PX:
+            nm = (g > 0) & (hsv[..., 1] >= NEON_SAT) & (hsv[..., 0].astype(np.int16) <= peak - NEON_HUE_OFF)
+            if np.count_nonzero(nm) >= NEON_SHARE * g.size: self.neon = True; keep = torso[nm]
         if len(keep) < 12: return None
         lab = cv2.cvtColor(keep.reshape(-1, 1, 3), cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
         return np.median(lab, axis=0)
@@ -344,7 +360,8 @@ class TeamModel:
                 if self.ready:
                     near, off = self.nearest(f)
                     for k in c: c[k] *= KIT_DECAY
-                    rf = self.refish(f)
+                    # an off-kit neon shirt is an official's, unless the detector calls him a keeper (keepers wear neon too)
+                    rf = self.refish(f) or (self.neon and off and r["gk"] < ROLE_SHARE * sum(r.values()))
                     c[near] += 1; self.nvotes[cid] += 1; self.noff[cid] += off; self.nref[cid] += rf
                     self.fsum[cid] = self.fsum.get(cid, 0.0) + f
                     self.recent[cid].append("ref" if rf else "off" if off else near)
