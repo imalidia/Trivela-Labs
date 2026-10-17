@@ -1,0 +1,17 @@
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-0iaCx9JFL9qNWaYLk9fojJ
+✓ Created objects.
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/scripts/demo-match.json
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
+├── ✓ Uploaded PythonPackage:modal_app
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
+├── ✓ Created Function rerun.
+├── ✓ Created Function snapshot.
+├── ✓ Created Function hf_search.
+├── ✓ Created Function kp_probe.
+└── ✓ Created Function r2check.
+wrote ['analyses.txt', 'clip.txt', 'sheet_01.jpg', 'summary.json', 'tactical_metadata.json.gz', 'upload.txt'] to eval-out
+Stopping app - local entrypoint completed.
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-0iaCx9JFL9qNWaYLk9fojJ
