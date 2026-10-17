@@ -231,6 +231,7 @@ REF_MIN_SAMPLES = 12    # ...once there are this many (a few stray "referee" box
 NEON_SHARE = 0.3        # share of a torso in neon (grass-filtered, saturated, yellower than the turf) that makes a neon shirt...
 NEON_SAT = 100          # ...with neon pixels at least this saturated (HSV S)...
 NEON_HUE_OFF = 4        # ...and at least this many hue steps yellower than the turf
+NEON_HUE_MIN = 28       # ...but still yellow-green: Roma's orange shirts on a sunlit pitch (turf hue 24) sit at 15-20
 NEON_MIN_PX = 30        # ...on a torso crop at least this big
 
 class TeamModel:
@@ -293,7 +294,8 @@ class TeamModel:
         self.neon = False
         peak = getattr(self.grass, "peak", None)
         if peak is not None and g.size >= NEON_MIN_PX:
-            nm = (g > 0) & (hsv[..., 1] >= NEON_SAT) & (hsv[..., 0].astype(np.int16) <= peak - NEON_HUE_OFF)
+            hue = hsv[..., 0].astype(np.int16)
+            nm = (g > 0) & (hsv[..., 1] >= NEON_SAT) & (hue >= NEON_HUE_MIN) & (hue <= peak - NEON_HUE_OFF)
             if np.count_nonzero(nm) >= NEON_SHARE * g.size: self.neon = True; keep = torso[nm]
         if len(keep) < 12: return None
         lab = cv2.cvtColor(keep.reshape(-1, 1, 3), cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
