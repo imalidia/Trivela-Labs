@@ -1,10 +1,10 @@
-✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-9uAHltVIHhDk0LeOMIyc8J
+✓ Initialized. View run at https://modal.com/apps/imalidia16/main/ap-le3kfNVTfr9Zc99ZFKlSnj
 ✓ Created objects.
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/modal_eval.py
-├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
-├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
-├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/scripts/demo-match.json
 ├── ✓ Uploaded PythonPackage:modal_app
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/scripts/demo-match.json
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/hud.html
+├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/CV/app.py
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/coach
 ├── ✓ Uploaded /home/runner/work/Trivela-Labs/Trivela-Labs/trivela-frontend/landing
 ├── ✓ Created Function rerun.
@@ -14,4 +14,4 @@
 ├── ✓ Created Function r2check.
 └── ✓ Created Function r2ls.
 Stopping app - local entrypoint completed.
-✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-9uAHltVIHhDk0LeOMIyc8J
+✓ App completed. View run at https://modal.com/apps/imalidia16/main/ap-le3kfNVTfr9Zc99ZFKlSnj
