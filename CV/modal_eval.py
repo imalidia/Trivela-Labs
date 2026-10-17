@@ -142,11 +142,32 @@ def r2check() -> dict:
     return {"r2.txt": f"uploaded {mid} ({v.stat().st_size} bytes); signed link answered {r.status}, {len(r.read())} bytes".encode()}
 
 
+@app.function(cpu=1.0, timeout=10 * 60, volumes={DATA: volume}, secrets=[r2_secret])
+def r2ls(delete: list = None) -> dict:
+    """The videos in R2, oldest first, with the match each belongs to; deletes the given keys first"""
+    volume.reload()
+    c = r2_client(); b = os.environ["R2_BUCKET"]; log = []
+    for k in delete or []:
+        c.delete_object(Bucket=b, Key=k); log.append(f"deleted {k}")
+    objs = sorted(c.list_objects_v2(Bucket=b).get("Contents", []), key=lambda o: o["LastModified"])
+    ad = Path(DATA) / "workspace" / "analyses"
+    def name(k):
+        f = ad / f"{Path(k).stem}.json"
+        if not f.is_file(): return "(no saved analysis)"
+        r = json.loads(f.read_text()); return f"{r.get('home')} vs {r.get('away')}"
+    rows = [f"{o['LastModified']:%Y-%m-%d %H:%M} {o['Size'] / 1e6:7.1f} MB {o['Key']} {name(o['Key'])}" for o in objs]
+    return {"r2ls.txt": "\n".join(log + rows + [f"total {sum(o['Size'] for o in objs) / 1e9:.2f} GB in {len(objs)} videos"]).encode()}
+
+
 @app.local_entrypoint()
 def main(rerun_mode: str = "", res: str = "1080p", times: str = "", out: str = "eval-out", export: bool = False, hf: str = "",
-         clip: str = "clip.mp4", keep: str = "", kp: str = "", kits: str = "", r2: bool = False):
+         clip: str = "clip.mp4", keep: str = "", kp: str = "", kits: str = "", r2: bool = False, r2list: bool = False, r2del: str = ""):
     # kits: team-picker clicks as role:t:x:y,... (x, y as shares of the frame)
     kl = [{"role": r, "t": float(t), "x": float(x), "y": float(y)} for r, t, x, y in (k.split(":") for k in kits.split(",") if k)] or None
+    if r2list or r2del:
+        dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
+        for name, data in r2ls.remote([k for k in r2del.split(";") if k]).items(): (dest / name).write_bytes(data)
+        return
     if r2:
         dest = Path(out); dest.mkdir(parents=True, exist_ok=True)
         for name, data in r2check.remote().items(): (dest / name).write_bytes(data)
